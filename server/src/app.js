@@ -1,19 +1,15 @@
-import express from 'express';
-import pool from './db/pool.js';
+import express, { application } from 'express';
+import ingredientsRoutes from './routes/ingredients.js';
+import { notFound } from './middleware/notFound.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
-app.get('/api/hello', (req,res) => {
-    res.json({ message: 'Hello from the server'});
-});
+app.use(express.json());
 
-app.get('/api/ingredients', async (req, res) =>{
-    const result = await pool.query('SELECT id, name FROM ingredients ORDER BY name');
-    res.json(result.rows);
-})
+app.use('/api/ingredients', ingredientsRoutes);
 
-app.listen(3000, () =>{
-    console.log('Listening on http://localhost:3000');
-});
+app.use(notFound);
+app.use(errorHandler);
 
-
+app.listen(3000, () => console.log('Listening on http://localhost:3000'));
