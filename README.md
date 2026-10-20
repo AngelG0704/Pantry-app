@@ -1,8 +1,8 @@
 The goal of this project is to create a full-stack application that allows the user to come up with ways to create food with ingredients they have in their kitchen
 
 
-##10-19-2026
-###Version 0.4.0: Recipe matching
+## 10-19-2026
+### Version 0.4.0: Recipe matching
 
 Recipes can now be ranked by how many of their ingredients a user has, with the
 missing ingredients listed for each result.
