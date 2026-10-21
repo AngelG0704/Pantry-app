@@ -15,3 +15,11 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
     ingredient_id INT NOT NULL REFERENCES ingredients(id),
     PRIMARY KEY (recipe_id, ingredient_id)
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL CHECK (email = lower(email)),
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
