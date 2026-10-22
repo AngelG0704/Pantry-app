@@ -23,3 +23,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS pantry_items (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ingredient_id INT NOT NULL REFERENCES ingredients(id),
+    added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, ingredient_id)
+);

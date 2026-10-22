@@ -1,6 +1,8 @@
 import * as recipeService from '../services/recipeService.js';
+import { MAX_INT } from '../constants.js';
+import { parseMaxMissing } from '../utils/parseMaxMissing.js';
 
-const MAX_INT = 2147483647;
+const MAX_MATCH_IDS = 50;
 
 export async function getRecipe(req, res, next) {
     try{
@@ -26,7 +28,6 @@ export async function getRecipe(req, res, next) {
     }
 }
 
-const MAX_MATCH_IDS = 50;
 
 export async function getRecipeMatches(req, res, next) {
     try{
@@ -56,7 +57,28 @@ export async function getRecipeMatches(req, res, next) {
             return res.status(400).json({ error: 'Ingredient id out of range' });
         }
 
-        const matches = await recipeService.matchRecipes(ids);
+        const { value: maxMissing, error } = parseMaxMissing(req.query.maxMissing);
+        if (error){
+            return res.status(400).json({ error });
+        }
+
+        const matches = await recipeService.matchRecipes(ids, { maxMissing });
+        res.json(matches);
+    } catch (err){
+        next(err);
+    }
+}
+
+export async function getMatchesForMyPantry(req, res, next) {
+    try {
+        const { value: maxMissing, error } = parseMaxMissing(req.query.maxMissing);
+        if (error) {
+            return res.status(400).json({ error });
+        }
+
+        const matches = await recipeService.matchRecipesForUser(req.user.id, {
+            maxMissing,
+        });
         res.json(matches);
     } catch (err) {
         next(err);
