@@ -1,7 +1,8 @@
 import bcrypt from 'bcrypt';
 import pool from '../db/pool.js';
+import { config } from '../config.js'
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = config.bcryptRounds;
 const DUMMY_HASH = await bcrypt.hash('not-a-real-password', SALT_ROUNDS);
 
 function toUser(row) {

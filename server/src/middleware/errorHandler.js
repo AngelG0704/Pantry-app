@@ -1,7 +1,7 @@
 export function errorHandler(err, req, res, next){
     console.error(`${req.method} ${req.originalUrl}`, err);
 
-    if (res.headerSent) {
+    if (res.headersSent) {
         return next(err);
     }
 

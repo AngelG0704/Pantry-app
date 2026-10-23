@@ -8,7 +8,14 @@ if (!jwtSecret || jwtSecret.length < 32) {
     );
 }
 
+const bcryptRounds = Number(process.env.BCRYPT_ROUNDS ?? 12);
+
+if (!Number.isInteger(bcryptRounds) || bcryptRounds < 4 || bcryptRounds > 15){
+    throw new Error('BCRYPT_ROUNDS must be an integer from 4 to 15');
+}
+
 export const config = {
     jwtSecret,
     jwtExpiresIn: '1h',
+    bcryptRounds,
 };

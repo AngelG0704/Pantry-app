@@ -4,10 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "node --watch src/app.js",
-    "start": "node src/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "db:seed": "node src/db/seed.js"
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --env-file=.env.test --test --test-concurrency=1",
+    "db:seed": "node src/db/seed.js",
+    "test:coverage": "node --env-file=.env.test --test --test-concurrency=1 --experimental-test-coverage"
   },
   "repository": {
     "type": "git",
@@ -25,5 +26,8 @@
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
   }
 }
