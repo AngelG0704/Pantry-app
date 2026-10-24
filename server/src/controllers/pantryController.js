@@ -12,16 +12,12 @@ export async function getPantry(req, res, next) {
 
 export async function addPantryItem(req, res, next) {
     try {
-        const { ingredientId } = req.body ?? {};
+        const { ingredientId } = req.valid.body;
 
-        if (!Number.isInteger(ingredientId) || ingredientId < 1 || ingredientId > MAX_INT) {
-            return res.status(400).json({ error: 'ingredientId must be a positive integer' });
-        }
-
-        const result = await pantryService.addToPantry(req.user.id, ingredientId);
-        if (!result){
-            return res.status(400).json({ error: 'Unknown ingredient' });
-        }
+       const result = await pantryService.addToPantry(req.user.id, ingredientId);
+       if (!result){
+        return res.status(400).json({ error: 'Unknown ingredient' });
+       }
 
         res.status(result.created ? 201 : 200).json(result.ingredient);
     } catch (err) {
@@ -32,12 +28,9 @@ export async function addPantryItem(req, res, next) {
 
 export async function removePantryItem(req, res, next) {
     try {
-        if (!/^\d+$/.test(req.params.ingredientId)) {
-            return res.status(400).json({ error: 'ingredientId must be a postive integer' });
-        }
+        const { ingredientId } = req.valid.params;
 
-        const ingredientId = Number(req.params.ingredientId);
-        if (ingredientId > MAX_INT){
+        if (ingredientId > MAX_INT) {
             return res.status(404).json({ error: 'Ingredient not in pantry' });
         }
 

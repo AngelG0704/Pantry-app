@@ -3,6 +3,178 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 10-24-2026
+### Version 0.6.0: Testing and hardening
+
+The API now has an automated test suite (111 tests) that runs against a separate
+test database, and it is hardened against common abuse: security headers, a CORS
+allowlist, a request size limit, rate limiting, and schema-based input validation
+with one consistent error format. No existing endpoint changed its behavior.
+
+### Added
+
+- **Automated tests:** `npm test` runs 111 tests with Node's built-in test runner
+  and `supertest`, against a separate `pantry_test` database.
+  - `catalog` (6), `auth` (24), `matching` (20), `pantry` (32), `errorHandler`
+    (4), `security` (7), `rate limiting` (8), `validation` (10).
+- **`npm run test:coverage`:** the same suite with a coverage report.
+- **Security headers** on every response (via `helmet`); `X-Powered-By` is removed.
+- **CORS allowlist:** only origins listed in `CORS_ORIGINS` may read responses from
+  a browser.
+- **Request size limit:** JSON bodies over 10 KB are rejected with `413`.
+- **Rate limiting** (via `express-rate-limit`):
+  - General: 300 requests per 15 minutes per IP, on every `/api` route.
+  - `POST /api/auth/login`: 10 failed attempts per 15 minutes per IP.
+  - `POST /api/auth/register`: 20 requests per hour per IP.
+- **Schema validation** (via `zod`): `validate` middleware and
+  `validation/schemas.js`; cleaned input is available to controllers as `req.valid`.
+- `src/server.js`: the process entry point. `src/app.js` now only builds and
+  exports the app.
+- Optional environment variables: `CORS_ORIGINS`, `TRUST_PROXY`,
+  `RATE_LIMIT_GENERAL_MAX`, `RATE_LIMIT_LOGIN_MAX`, `RATE_LIMIT_REGISTER_MAX`,
+  `BCRYPT_ROUNDS`.
+- Scripts: `test`, `test:coverage`. `dev` and `start` now run `src/server.js`.
+- Dependencies: `helmet`, `cors`, `express-rate-limit`, `zod`; dev dependency
+  `supertest`.
+- Postman collection and `Local` environment in `postman/` for manual exploration.
+
+### Behavior
+
+- **Rate-limited requests** return `429` with `{ "error": "..." }`, a `Retry-After`
+  header (seconds), and standard `RateLimit` / `RateLimit-Policy` headers on every
+  `/api` response, so clients can see their remaining budget.
+- **The login limit counts only failed attempts.** Once a client has used its
+  budget, further login attempts return `429` until the window ends, even with the
+  correct password.
+- **Validation errors** return `400` with
+  `{ "error": "<first message>", "details": [{ "field": "...", "message": "..." }] }`.
+  Every problem is reported at once. The `error` string is unchanged from earlier
+  versions, so existing clients keep working.
+- **CORS:** a listed origin receives `Access-Control-Allow-Origin` for that origin.
+  An unlisted origin receives no permission header, but the request is still served
+  (browsers, not the server, refuse to hand the response to the page). Preflight
+  `OPTIONS` requests are answered with `204` before authentication, so they work
+  without a token.
+- Authentication is checked before validation on protected routes: a request with
+  no token and a bad body gets `401`, not `400`.
+- A request body over 10 KB returns `413`.
+- All existing endpoints keep their previous statuses and messages, verified by the
+  test suite.
+
+### Validation (returns `400` unless noted)
+
+| Input | Rule |
+|---|---|
+| Path ids (`/api/recipes/:id`, `/api/pantry/:ingredientId`) | Digits only; a value above 2147483647 is well-formed but cannot exist, so it returns `404` |
+| `ingredients` (`/api/recipes/match`) | Required, comma-separated positive integers, duplicates ignored, at most 50 unique ids, each at most 2147483647 |
+| `maxMissing` (both match endpoints) | Optional; digits only, at most 2147483647 |
+| Register `email` | Trimmed and lowercased; valid format; at most 254 characters |
+| Register `password` | At least 8 characters and at most 72 **bytes** |
+| Login `email` / `password` | Both strings; the email is trimmed and lowercased (no format check) |
+| `POST /api/pantry` `ingredientId` | A JSON integer from 1 to 2147483647 (strings and decimals rejected) |
+| Any JSON body over 10 KB | `413` |
+| Unlisted `Origin` | Request served, no CORS permission header |
+
+### Implementation notes
+
+- **App and server are separate.** `app.js` exports the Express app without
+  listening, so tests can drive it in-process; `server.js` starts it.
+- **Tests are isolated and guarded.** `.env.test` is loaded with `--env-file`;
+  `dotenv` never overrides variables that already exist, so tests use
+  `pantry_test`. The test helpers throw unless the database name ends in `_test`,
+  before any query runs. Each file resets the schema, truncates all tables with
+  `RESTART IDENTITY`, and inserts a small fixture set independent of the seed data.
+  Test files run one at a time (`--test-concurrency=1`) because they share one
+  database. Tests use `BCRYPT_ROUNDS=4`; the default stays 12.
+- **Middleware order matters:**
+  `helmet → cors → general limiter → JSON parser → routers → notFound → errorHandler`.
+  `cors` runs before the routes so preflights never reach authentication, and the
+  limiter runs after `cors` so a `429` still carries CORS headers.
+- **Limiters are built by a `createLimiter` factory.** Behavior tests use tiny
+  limits on an isolated app; wiring tests on the real app check which limiter
+  applies to each route through the `RateLimit-Policy` header.
+- **Validation is separated from existence checks.** Schemas decide whether input
+  is well-formed (`400`). Questions that need the database stay in the controllers
+  and services (unknown ingredient, duplicate email, a missing recipe), and the
+  database constraints remain the last line of defense. The tests confirmed this:
+  removing the email lowercasing in the schema made the `CHECK (email = lower(email))`
+  constraint reject the insert.
+- Parsed input is placed on `req.valid`, not written back to `req.body` or
+  `req.query` (read-only in Express 5).
+- `trust proxy` is set only when `TRUST_PROXY` is above 0, and only to a number of
+  hops, never `true`, which would let clients forge their address.
+- A unit test found that `errorHandler` checked a misspelled property
+  (`res.headerSent`), so responses that had already started were not handed back to
+  Express. It now checks `res.headersSent`.
+- `utils/parseMaxMissing.js` was removed; the shared `maxMissing` schema replaces it.
+- To upgrade from 0.5.0: run `npm install`; create the test database
+  (`CREATE DATABASE pantry_test;`) and a `server/.env.test`; start the server with
+  `npm run dev` (it now runs `src/server.js`); optionally set the new variables.
+
+### Example
+
+A request that fails validation reports every problem:
+
+```powershell
+curl.exe -i -X POST http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d "{}"
+```
+
+```json
+{
+  "error": "email is required",
+  "details": [
+    { "field": "email", "message": "email is required" },
+    { "field": "password", "message": "password is required" }
+  ]
+}
+```
+
+Running the suite:
+
+```powershell
+npm test
+```
+
+```
+ℹ tests 111
+ℹ pass 111
+ℹ fail 0
+```
+
+### Files changed
+
+- `src/app.js`: builds and exports the app; adds `helmet`, `cors`, the general
+  limiter, and the body size limit
+- `src/server.js`: new entry point
+- `src/config.js`: validated settings for CORS origins, rate limits, trust proxy,
+  and bcrypt cost
+- `src/middleware/validate.js`, `rateLimiters.js`: new
+- `src/validation/schemas.js`: new
+- `src/middleware/errorHandler.js`: fixed the `headersSent` check
+- `src/routes/auth.js`, `recipes.js`, `pantry.js`: attach limiters and schemas
+- `src/controllers/authController.js`, `recipeController.js`,
+  `pantryController.js`: input checks removed (now in schemas)
+- `src/services/authService.js`: bcrypt cost comes from configuration
+- `src/utils/parseMaxMissing.js`: removed
+- `tests/`: `helpers.js` plus eight test files
+- `.env.test`, `.gitignore`, `package.json`: test configuration and scripts
+
+### Known limitations
+
+- No HTTPS enforcement yet (production deployment phase); the `Strict-Transport-Security`
+  header only takes effect once the API is served over HTTPS.
+- Rate-limit counters live in server memory: they reset on restart and are not
+  shared between multiple server instances. Limits are per IP address, so users
+  sharing an address share a budget, and there is no per-account lockout.
+- Tokens cannot be revoked before they expire, and there is no refresh token or
+  logout flow (planned: Phase 7c).
+- No password reset, email verification, or account deletion.
+- The tests do not cover a real database outage (only the error handler is tested
+  directly) or server startup checks, and there is no CI pipeline yet (planned:
+  Phase 8).
+- The pantry stores only presence (no quantities or expiry dates), and there is no
+  frontend yet.
+
 ## 10-22-2026
 ### Version 0.5.0: Accounts, authentication, and per-user pantry
 
