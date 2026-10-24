@@ -465,6 +465,7 @@ requests can save tokens into the environment). The collection covers
 authentication, ingredients, recipes, matching, the pantry, and CORS behavior, with
 a test script on each request. The environment ships with empty tokens. Tests catch
 regressions; Postman is for exploring.
+
 ---
 
 ## Troubleshooting
