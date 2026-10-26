@@ -43,4 +43,22 @@ describe('health and failure handling', () => {
     assert.equal(res.status, 500);
     assert.deepEqual(res.body, { error: 'Something went wrong' });
   });
+
+  it('answers the liveness check without touching the database', async () => {
+    mock.method(pool, 'query', async () => {
+      throw new Error('should not be called');
+    });
+
+    const res = await api.get('/api/health/live');
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { status: 'ok' });
+    assert.equal(pool.query.mock.callCount(), 0);
+  });
+
+  it('does not rate limit the liveness check either', async () => {
+    const res = await api.get('/api/health/live');
+  
+    assert.equal(res.headers['ratelimit-policy'], undefined);
+  });
 });
