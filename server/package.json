@@ -26,6 +26,7 @@
   "homepage": "https://github.com/AngelG0704/Pantry-app#readme",
   "type": "module",
   "dependencies": {
+    "cors": "^2.8.6",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.1",
