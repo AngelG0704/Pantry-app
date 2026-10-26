@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+
+  "engines": {
+    "node": ">=20.10"
+  },
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",

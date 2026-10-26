@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config.js';
 import { generalLimiter } from './middleware/rateLimiters.js';
+import healthRoutes from './routes/health.js';
 import ingredientsRoutes from './routes/ingredients.js';
 import recipeRoutes from './routes/recipes.js';
 import { notFound } from './middleware/notFound.js';
@@ -12,9 +13,10 @@ import pantryRoutes from './routes/pantry.js';
 
 const app = express();
 
-if (config.trustProxy > 0){
+if (config.trustProxy  > 0) {
     app.set('trust proxy', config.trustProxy);
 }
+
 
 app.use(helmet());
 
@@ -26,6 +28,8 @@ app.use(
         maxAge: 600,
     })
 );
+
+app.use('/api/health', healthRoutes);
 
 app.use('/api', generalLimiter);
 
