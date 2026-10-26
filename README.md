@@ -3,9 +3,9 @@
 Tell the app what's in your kitchen, and it tells you what you can cook, ranked by
 how many ingredients you already have and listing exactly what's missing.
 
-**Status:** the backend (API, database, accounts, per-user pantry, recipe matching)
-is complete, tested, and hardened through **v0.6.0**. The frontend and deployment
-are planned. See the [Roadmap](#roadmap).
+**Status:** the full stack app (API, database, accounts, saved pantry, recipe
+matching, and a React web app) is complete, tested, and hardened through **v0.7.0**.
+Deployment is planned. See the [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
 
@@ -19,7 +19,9 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **"Almost there" filtering:** only show recipes missing at most *N* ingredients
 - **Accounts:** register and log in with email and password
 - **A personal pantry** that persists between sessions and is private to each user
-- **Matching from your saved pantry**, so the app already knows what you have
+- **Matching from your saved pantry**, updating live as you add and remove ingredients
+- **A web app** (React) with an ingredient picker, ranked results, recipe details,
+  and a pantry screen
 - **A tested, hardened API:** 111 automated tests, rate limiting, a CORS
   allowlist, security headers, and schema-validated input
 
@@ -27,6 +29,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 
 | Layer | Technology |
 |---|---|
+| Frontend | React, Vite, React Router |
 | Runtime | Node.js 20.10+ (ES modules) |
 | Web framework | Express |
 | Database | PostgreSQL, via the `pg` driver |
@@ -34,10 +37,9 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 | Sessions | JSON Web Tokens (`jsonwebtoken`, HS256, 1-hour expiry) |
 | Input validation | `zod` |
 | Security | `helmet` (headers), `cors` (origin allowlist), `express-rate-limit` |
-| Configuration | `dotenv` |
-| Automated tests | Node's built-in test runner and `supertest` |
+| Configuration | `dotenv` (server), Vite environment files (client) |
+| Automated tests | Node's built-in test runner and `supertest` (server) |
 | Manual API testing | Postman |
-| Frontend | React (planned) |
 
 ---
 
@@ -46,17 +48,18 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 A full stack app is three programs, each with one job:
 
 ```
-Browser (client)  ──HTTP request──▶  Server (Node/Express)  ──SQL──▶  Database (PostgreSQL)
-what users see   ◀──JSON response──  rules and logic         ◀─rows──  permanent storage
+Browser (React app)  ──HTTP request──▶  Server (Node/Express)  ──SQL──▶  Database (PostgreSQL)
+what users see      ◀──JSON response──  rules and logic         ◀─rows──  permanent storage
 ```
 
 The server sits between users and data because it is the **trust boundary**:
 anything running in a browser can be inspected and changed, so secrets, rules, and
-ownership checks live on the server.
+ownership checks live on the server. The web app is a convenience layer; it is
+never trusted to enforce anything.
 
 ### The request pipeline
 
-Every request passes through the same stages, in this order:
+Every API request passes through the same stages, in this order:
 
 ```
 helmet → cors → rate limit → JSON parser → route → (authenticate) → validate → controller → service → database
@@ -120,7 +123,18 @@ pantry-app/
 │   │   ├── services/         # auth, token, ingredient, pantry, recipe
 │   │   └── validation/       # zod schemas
 │   └── tests/                # automated tests and helpers
-└── client/                   # planned
+└── client/
+    ├── .env.development      # the API's address (not a secret)
+    ├── package.json
+    ├── vite.config.js
+    └── src/
+        ├── main.jsx          # entry point (router and session provider)
+        ├── App.jsx           # header and routes
+        ├── api.js            # the one place that talks to the API
+        ├── auth/             # session context, provider, token storage
+        ├── components/       # picker, chips, results, forms, header
+        ├── hooks/            # data loading and state logic
+        └── pages/            # one component per screen
 ```
 
 ### Data model
@@ -171,13 +185,11 @@ use is blocked.
 
 ### Prerequisites
 
-- Node.js 20.10 or newer
+- Node.js 20.19 or newer (the server needs 20.10+, and the client's build tool needs 20.19+)
 - PostgreSQL (a local install)
 - Git
 
-All commands below run from the `server/` folder unless noted.
-
-### 1. Install dependencies
+### 1. Install the server
 
 ```bash
 cd server
@@ -190,7 +202,7 @@ npm install
 psql -U postgres -c "CREATE DATABASE pantry;"
 ```
 
-### 3. Configure environment variables
+### 3. Configure the server
 
 Create `server/.env`:
 
@@ -233,7 +245,7 @@ npm run db:seed
 This creates the tables and loads 20 recipes and 28 ingredients. It is
 **idempotent**: running it again updates the data and never duplicates it.
 
-### 5. Run the server
+### 5. Run the API
 
 ```bash
 npm run dev
@@ -248,7 +260,24 @@ curl http://localhost:3000/api/ingredients
 (On Windows PowerShell, use `curl.exe`, because `curl` is an alias for a different
 command.)
 
+### 6. Run the web app
+
+In a second terminal:
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The API must be running, and its `CORS_ORIGINS` must
+include `http://localhost:5173` (the default does). The client reads the API's
+address from `client/.env.development` (`VITE_API_URL`, default
+`http://localhost:3000`); restart the client after changing it.
+
 ### Scripts
+
+**Server** (`server/`):
 
 | Script | What it does |
 |---|---|
@@ -257,6 +286,55 @@ command.)
 | `npm run db:seed` | Applies `schema.sql` and loads the seed data (safe to repeat) |
 | `npm test` | Runs the automated test suite against the test database |
 | `npm run test:coverage` | Runs the suite and prints a coverage report |
+
+**Client** (`client/`):
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Starts the Vite dev server on port 5173 |
+| `npm run build` | Builds the production bundle into `dist/` |
+| `npm run preview` | Serves the production build locally |
+| `npm run lint` | Checks the code with ESLint |
+
+---
+
+## The web app
+
+| Address | Login | What it shows |
+|---|---|---|
+| `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
+| `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
+| `/login`, `/register` | no | Forms that show the server's validation messages beside each field |
+| `/pantry` | **yes** | Your saved pantry; ranked recipes update automatically as you tick and untick |
+| `/account` | **yes** | Your email and join date |
+| anything else | no | A "Page not found" screen |
+
+How it's built:
+
+- **One API module.** `src/api.js` is the only code that calls `fetch`. It adds the
+  token, turns failures into one error type, and reports rejected tokens.
+- **Hooks hold the logic, components draw the screen.** Each piece of server data
+  has a hook (loading, error, and success state, with cancellation of stale
+  requests), and pages stay small.
+- **Where state lives.** The home-page selection lives in `App`, so it survives
+  moving between screens (but not a reload). Per-user data such as the pantry lives
+  inside protected pages, so nothing user-specific survives logout.
+- **Optimistic pantry updates.** Ticking an ingredient updates the screen
+  immediately and is undone with an error message if the request fails.
+- **Text, never HTML.** React inserts recipe text as text, so stored content cannot
+  inject markup.
+
+### Sessions in the browser
+
+After login, the token is kept in `localStorage` (key `pantry.token`) and sent with
+each request. On reload, a stored token is verified with the server before the app
+treats you as logged in. Any `401` on a request that carried a token ends the
+session and sends you to the login page, then back to where you were.
+
+**This is a trade-off:** a script running on the page could read the token. The
+mitigations are React's escaping, the one-hour expiry, and loading no third-party
+scripts. The stronger design, an HttpOnly cookie with refresh tokens, needs changes
+on the server.
 
 ---
 
@@ -362,7 +440,8 @@ cannot see or change another user's pantry.
 | **Input validation** | Every route's input is checked by a schema before the controller runs, with one consistent error format. |
 | **Request size limit** | JSON bodies over 10 KB are rejected. |
 | **Password handling** | bcrypt hashes; login takes the same time for unknown emails; identical error for a wrong password and an unknown email. |
-| **Tokens** | Signed with HS256, one-hour expiry, algorithm pinned on verification. |
+| **Tokens** | Signed with HS256, one-hour expiry, algorithm pinned on verification. Kept in `localStorage` in the browser (see the trade-off above). |
+| **No injected markup** | The web app renders stored text as text. `VITE_` variables are public in the browser bundle, so they never hold secrets. |
 | **Database as last defense** | Unique constraints, foreign keys, and a lowercase-email check reject bad data even if application code is wrong. |
 
 When deploying behind a reverse proxy, set `TRUST_PROXY` to the number of proxies
@@ -393,8 +472,8 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The suite has **111 automated tests** and runs against a separate database, so it
-never touches your development data.
+The server has **111 automated tests** and runs against a separate database, so it
+never touches your development data. The web app has no automated tests yet.
 
 ### One-time setup
 
@@ -422,6 +501,7 @@ never touches your development data.
 ### Running
 
 ```bash
+cd server
 npm test
 npm run test:coverage
 ```
@@ -465,6 +545,7 @@ requests can save tokens into the environment). The collection covers
 authentication, ingredients, recipes, matching, the pantry, and CORS behavior, with
 a test script on each request. The environment ships with empty tokens. Tests catch
 regressions; Postman is for exploring.
+
 ---
 
 ## Troubleshooting
@@ -481,8 +562,11 @@ regressions; Postman is for exploring.
 | Changes to `.env` have no effect | It is read once at startup. Stop and restart the server. |
 | `401` on a protected route | The token is missing, malformed, or expired (tokens last one hour). Log in again. |
 | `429 Too many requests` while testing by hand | A rate limit tripped. Restart the dev server to reset the in-memory counters, or raise the limits in `.env`. |
-| Browser console says **CORS policy** | The page's origin isn't in `CORS_ORIGINS`. Add it and restart. |
+| Web app shows "Could not reach the server" | The API isn't running, or the browser blocked the request. Open the browser console: **CORS policy** means the page's origin isn't in `CORS_ORIGINS`; `ERR_CONNECTION_REFUSED` means the API is down or `VITE_API_URL` is wrong. |
 | Browser console says **Content Security Policy** | The *page* is blocking the request (not the API). Check the page's own headers. |
+| Requests go to `undefined/api/...` | `client/.env.development` is missing or misnamed, or the client wasn't restarted after editing it. |
+| Vite says port 5173 is already in use | Another dev server holds the port. Close it; the client is pinned to 5173 because the API's default CORS allowlist expects it. |
+| You are logged out unexpectedly | The token expired (one hour) or the server's `JWT_SECRET` changed. Log in again. |
 | `Refusing to run tests: database "..." does not end with "_test"` | You ran the tests without `.env.test`. Use `npm test`. |
 | `bad option: --env-file` | Node is older than 20.10. Update it. |
 | PowerShell says `Supply values for the following parameters` after `curl` | `curl` is an alias for `Invoke-WebRequest`. Use `curl.exe`, or Postman. |
@@ -499,22 +583,26 @@ regressions; Postman is for exploring.
 | 4 | Matching: ranking, missing ingredients, `maxMissing` | Done |
 | 5 | Users and persistence: accounts, authentication, per-user pantry, matching from the pantry | Done |
 | 6 | Quality and hardening: automated tests, security headers, CORS, rate limiting, schema validation | Done |
-| 7 | Frontend: React client, ingredient picker, results view, login flow | Planned |
+| 7 | Frontend: React app, ingredient picker, results, recipe detail, accounts, saved pantry | Done |
 | 8 | Shipping: deployment, CI/CD, logging and monitoring | Planned |
 
 ## Known limitations
 
-- No frontend yet.
-- HTTPS is not enforced yet (deployment phase). Passwords and tokens are only safe
+- Not deployed yet. HTTPS is not enforced, so passwords and tokens are only safe
   over HTTPS, and the HSTS header only takes effect once the API is served over it.
+- No automated tests for the web app, and no CI pipeline.
+- The token is stored in `localStorage`, where any script on the page could read
+  it. Tokens cannot be revoked before they expire, and there is no refresh token,
+  password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared
   between multiple server instances. Limits are per IP, so users sharing an
   address share a budget, and there is no per-account lockout.
-- Tokens cannot be revoked before they expire, and there is no logout, refresh
-  token, password reset, or email verification.
-- No CI pipeline yet, and the tests don't simulate a database outage.
-- The pantry records only presence, with no quantities or expiry dates.
+- The home-page selection is lost on reload.
+- The pantry records only presence, with no quantities or expiry dates, and has no
+  bulk operations.
 - Ingredient names are matched exactly, with no synonyms.
+- Accessibility covers the basics (labels, roles, keyboard-operable controls) but
+  has not been audited.
 
 ## Changelog
 

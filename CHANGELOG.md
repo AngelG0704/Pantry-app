@@ -3,6 +3,146 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 10-26-2026
+### Version 0.7.0
+
+The app now has a browser client: a React app (built with Vite) in `client/` where
+visitors pick ingredients and see ranked recipes, open recipe details, register and
+log in, and keep a saved pantry that drives live recipe matches. The API is
+unchanged.
+
+### Added
+
+- **`client/`:** a React 19 + Vite app (JavaScript) that talks to the existing API.
+- **Screens** (React Router):
+  - `/`: ingredient picker with search, selection chips, a "how many missing
+    ingredients are OK" filter, and ranked results.
+  - `/recipes/:id`: recipe detail with ingredients and instructions.
+  - `/login`, `/register`: forms that show the server's validation messages beside
+    each field.
+  - `/pantry` (login required): the saved pantry, with recipes ranked against it.
+  - `/account` (login required): email and join date.
+  - Any other address shows a "Page not found" page.
+- **Result cards** show the match as "n of m ingredients" with a progress bar and
+  either "You can make this now" or "You still need: ...".
+- **Recipe detail marks** each ingredient "you have this" or "you need this", using
+  the saved pantry when logged in and the ticked selection otherwise.
+- **Session handling:** register, login, logout, and session restore on reload.
+- **API client** (`client/src/api.js`): one `request` function that adds the token,
+  turns failures into an `ApiError` (carrying `status` and the server's `details`),
+  and tells the app when a token is rejected.
+- **Hooks:** `useIngredients`, `useRecipeMatches`, `useSearchState`, `useRecipe`,
+  `usePantry`, `useMyMatches`, `usePantryNames`, `useAuth`.
+- **Shared components:** `IngredientPicker`, `SelectedIngredients`,
+  `MaxMissingSelect`, `RecipeResults`, `FormField`, `RequireAuth`, `SiteHeader`.
+- `client/.env.development` with `VITE_API_URL` (the API's address).
+- Client scripts: `dev`, `build`, `preview`, `lint`.
+- Dependencies: `react`, `react-dom`, `react-router`, `vite` (plus ESLint tooling).
+
+### Behavior
+
+- Every screen that loads data handles four states: loading, error (with a retry
+  button), empty, and success.
+- **Session states:** `checking` (a stored token is being verified), `authenticated`,
+  and `anonymous`. Nothing is drawn as logged out while a stored token is being
+  checked.
+- **A `401` on any request that carried a token ends the session.** The stored token
+  is cleared, protected screens redirect to `/login`, and after logging in the user
+  returns to the page they were on. A failed login (which carries no token) does not
+  trigger this.
+- A failed session check caused by a network error does **not** delete the stored
+  token; only a `401` does.
+- **Saved pantry updates are optimistic.** The checkbox and chip change immediately,
+  and the change is undone with an error message if the request fails. A `404` when
+  removing an ingredient counts as success (it is already gone). An ingredient with a
+  request in flight is disabled, so there is at most one request per ingredient.
+- **Pantry matches refresh automatically** when the pantry or the "missing
+  ingredients" choice changes. A newer request aborts an older one, so a slow old
+  response cannot overwrite a newer one.
+- The home-page selection is kept in memory: it survives moving between screens but
+  not a page reload.
+- An unknown or malformed recipe id shows "We couldn't find that recipe."
+- Recipe instructions are rendered as text, never as HTML.
+- No user-specific data survives logout: the pantry lives inside the protected page,
+  and the recipe page's pantry lookup is tied to the token it was loaded with.
+
+### Validation (client side; the server remains the authority)
+
+| Input | Rule |
+|---|---|
+| Ingredient selection | At most 50 (mirrors the API); "Find recipes" is disabled with nothing selected or while a search runs |
+| Forms | Browser validation is turned off (`noValidate`); every message comes from the server's `details` |
+| Route parameters | Encoded with `encodeURIComponent` before being placed in an API URL |
+| Pantry ids | Sent as JSON numbers, as the API requires |
+| Search box | Trimmed and case-insensitive |
+
+### Implementation notes
+
+- The client calls the API **cross-origin** (`VITE_API_URL`), so it uses the CORS
+  allowlist from 0.6.0. The default allowed origin is `http://localhost:5173`; Vite is
+  pinned to that port with `strictPort`, so a busy port fails loudly instead of
+  producing confusing CORS errors.
+- `VITE_` variables are embedded in the browser bundle and are public. They must
+  never hold secrets.
+- **Where state lives:** the search state is created in `App`, which stays mounted
+  across routes, so it survives navigation. Per-user pantry state is created inside
+  the protected page and is discarded on logout.
+- The session is shared through React Context, split across three files (context,
+  provider, hook).
+- **Token storage trade-off:** the token is kept in `localStorage` (key
+  `pantry.token`) and sent as `Authorization: Bearer`. That survives reloads but is
+  readable by any script running on the page. Mitigations: React escapes all text,
+  tokens expire after one hour, and no third-party scripts are loaded. The stronger
+  option is an HttpOnly cookie with refresh tokens, which needs server changes.
+- Effects clean up with `AbortController`. In development, React StrictMode mounts
+  each component twice, which shows up as one canceled request in the Network tab.
+- Client-side routing means a hosting platform must serve `index.html` for any
+  path. The Vite dev server does this already; production hosting needs a rewrite
+  rule (Phase 8).
+- To run it: start the API (`server/`, `npm run dev`), then in `client/` run
+  `npm install` and `npm run dev`, and open `http://localhost:5173`.
+- To upgrade from 0.6.0: no server changes. Create the client; make sure
+  `CORS_ORIGINS` includes the client's origin (the default already does).
+
+### Example
+
+```powershell
+# Terminal 1: the API
+cd server
+npm run dev
+
+# Terminal 2: the web app
+cd client
+npm install
+npm run dev
+```
+
+Then open `http://localhost:5173`, register, tick a few ingredients on **My pantry**,
+and the ranked recipes update on their own.
+
+### Files changed
+
+- `client/` (new): `src/api.js`, `src/main.jsx`, `src/App.jsx`, `src/index.css`,
+  `src/auth/`, `src/components/`, `src/hooks/`, `src/pages/`, `vite.config.js`,
+  `.env.development`
+- `README.md`, `CHANGELOG.md`: updated for the frontend
+- Server: no code changes
+
+### Known limitations
+
+- No automated frontend tests yet (planned: Vitest and React Testing Library).
+- The selection on the home page is lost on reload, because it is held in memory
+  rather than in the URL.
+- The token in `localStorage` can be read by any script on the page. Logging out
+  clears it from the browser but does not revoke it on the server, and there is no
+  refresh token, so an expired token means logging in again.
+- The pantry API has no bulk operation, so each tick is one request, and there is no
+  "clear pantry" button.
+- Scroll position is not restored when returning to the results list.
+- Only basic accessibility is covered (labels, roles, keyboard-operable controls);
+  there has been no full audit.
+- No production build or hosting configuration yet (planned: Phase 8).
+
 ## 10-24-2026
 ### Version 0.6.0: Testing and hardening
 
