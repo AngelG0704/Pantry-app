@@ -3,6 +3,183 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 10-27-2026
+### Version 1.0.0
+
+The app can now run in production: the server reads its settings from the
+environment and refuses unsafe production configurations, a Render blueprint
+describes the API and the web app, every push is checked by an automated pipeline,
+deployments wait for that pipeline to pass, and the server writes structured logs
+with request ids. No endpoint changed its behavior.
+
+### Added
+
+- **Health endpoints**, both exempt from rate limiting and authentication:
+  - `GET /api/health/live`: liveness. Returns `200` `{ "status": "ok" }` whenever
+    the process is running, without touching the database.
+  - `GET /api/health`: readiness. Returns `200`
+    `{ "status": "ok", "database": "up" }`, or `503`
+    `{ "status": "degraded", "database": "down" }` when the database does not answer
+    within 2 seconds.
+- **Production configuration:** `PORT` (default 3000), `NODE_ENV`, and `LOG_LEVEL`
+  environment variables, with startup checks that refuse unsafe production settings.
+- **Graceful shutdown:** on `SIGTERM` or `SIGINT` the server stops accepting
+  requests, lets in-flight requests finish, closes the database pool, and exits.
+  Unhandled errors are logged as `fatal` before the process exits.
+- **Structured logging** (via `pino` and `pino-http`): one JSON line per request
+  with a request id, method, path, status, and timing.
+- **Request ids:** every response carries an `X-Request-Id` header, which browsers
+  can read on cross-origin requests.
+- **Deployment configuration:** `render.yaml`, a blueprint for a Render web service
+  (the API) and a Render static site (the React app), with a single-page-app
+  rewrite rule.
+- **CI pipeline** (`.github/workflows/ci.yml`, GitHub Actions):
+  - *Server tests*: starts PostgreSQL 16 and runs the full suite.
+  - *Client lint and build*: runs ESLint and a production build.
+- **Dependabot** (`.github/dependabot.yml`): weekly update pull requests for the
+  server's packages, the client's packages, and the GitHub Actions versions.
+- **Tests:** 22 new tests (health, configuration checks, observability), and the
+  error-handler tests were rewritten for the new logger; the server suite is now
+  133 tests.
+- `engines` field in `server/package.json` (`node >= 20.10`).
+- Dependencies: `pino`, `pino-http`; dev dependency `pino-pretty`.
+
+### Behavior
+
+- **Startup checks in production** (`NODE_ENV=production`): the server refuses to
+  start unless `CORS_ORIGINS` is set explicitly, every origin uses `https://`, and
+  `BCRYPT_ROUNDS` is at least 10. Outside production, nothing changes.
+- **Deployments are gated:** Render deploys a commit only after its GitHub checks
+  pass, and does not deploy when a check fails or when no checks are detected.
+- **Log levels follow the status code:** `info` for 2xx and 3xx, `warn` for 4xx,
+  `error` for 5xx and crashes. The liveness check is not logged.
+- **Client errors are not logged as errors:** only 5xx responses log the full error
+  and stack trace. The response to the client is unchanged (a vague message for
+  5xx, the error's own message for 4xx).
+- **Log lines never contain secrets:** no request or response bodies, headers,
+  cookies, tokens, passwords, or query strings. Authenticated requests log the
+  numeric `userId`, never an email.
+- **Request ids:** a caller-supplied `X-Request-Id` is reused only if it is 8 to 64
+  letters, digits, or dashes; otherwise a new UUID is generated.
+- **Cold starts on the free hosting plans:** the API sleeps after a period without
+  traffic and takes about a minute to wake, and the database wakes in a few
+  seconds. The in-memory rate-limit counters reset when the API restarts.
+
+### Validation (returns an error at startup unless noted)
+
+| Input | Rule |
+|---|---|
+| `PORT` | Integer from 1 to 65535 (default 3000) |
+| `NODE_ENV=production` with no `CORS_ORIGINS` | Refused |
+| `NODE_ENV=production` with a non-`https://` origin | Refused |
+| `NODE_ENV=production` with `BCRYPT_ROUNDS` below 10 | Refused |
+| `LOG_LEVEL` | One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` (default `debug`, or `info` in production) |
+| `TRUST_PROXY` | Integer from 0 to 5; set it to the number of proxies in front of the app |
+| `X-Request-Id` request header (per request) | 8 to 64 letters, digits, or dashes; anything else is replaced |
+
+### Implementation notes
+
+- **Two kinds of configuration.** The server reads its settings when it starts, so
+  a restart applies a change. The React app's `VITE_API_URL` is embedded in the
+  bundle at build time, so changing it requires a rebuild. This is why the first
+  deployment has two passes: the API's address is not known until the API exists.
+- **Two health checks, on purpose.** The platform's health check points at the
+  shallow `/api/health/live`, so a database hiccup cannot fail a deploy or cause a
+  restart that wouldn't fix it. The deeper `/api/health` is for monitoring. An
+  uptime monitor should ping the liveness path frequently: pinging the deep one
+  keeps the database awake and uses its free compute hours.
+- **TLS ends at the platform.** The app speaks plain HTTP behind the platform's
+  proxy, so `TRUST_PROXY` must match the number of proxies for rate limiting to see
+  real client addresses. If it is too low, all users share one rate-limit bucket;
+  too high, clients could forge their address. Verify it once after deploying by
+  logging `req.ip` and comparing it with your own public address.
+- **Hosted database over TLS.** The connection string from the database provider
+  includes `sslmode=require`, and the driver verifies the certificate. Use the
+  provider's direct (not pooled) connection string, since the server keeps its own
+  pool.
+- **Seeding production** is done from a developer machine by setting
+  `DATABASE_URL` for one command; it loads only the recipe catalog. The test
+  helpers refuse to run against any database whose name does not end in `_test`, so
+  a mistaken connection string cannot be used to wipe production.
+- **CI starts from nothing.** The workflow installs from the lockfiles (`npm ci`),
+  starts a fresh database, and writes its own `.env.test` containing throwaway
+  values, so no real secret enters CI. Linux filenames are case-sensitive, so a
+  casing mistake in an import that works on Windows fails in CI. The workflow runs
+  with read-only repository permissions, and a newer push cancels an older run of
+  the same branch.
+- **Testing failure modes.** The database outage tests replace `pool.query` with a
+  function that throws, which proves that a database failure on a normal route
+  becomes a controlled `500`, and that `/api/health` reports `503` without any
+  error text. The configuration checks are tested by importing `config.js` in a
+  fresh process with a controlled environment, since it reads settings when first
+  imported.
+- **Logging by allow-list.** The request and response serializers name exactly
+  what is logged. A test sends a password, a bearer token, a cookie, and a query
+  string secret, and asserts that none appear in the output.
+- `src/db/pool.js` still reports idle-connection errors with `console.error`, so
+  the seed script does not need server settings.
+- To upgrade from 0.7.0: run `npm install` in `server/`; add `LOG_LEVEL=silent` to
+  `server/.env.test`; push the repository to GitHub; follow the deployment
+  section of the README.
+
+### Example
+
+Health checks against a running server:
+
+```powershell
+curl.exe -i http://localhost:3000/api/health/live
+curl.exe -i http://localhost:3000/api/health
+```
+
+```json
+{ "status": "ok" }
+{ "status": "ok", "database": "up" }
+```
+
+One request's log line (raw JSON, as produced in production):
+
+```json
+{"level":30,"time":"2026-10-27T14:03:11.402Z","service":"pantry-api","req":{"id":"6f1c2c1e-8a3e-4c1a-9d3e-2b7a1f0c5e11","method":"GET","path":"/api/ingredients"},"res":{"statusCode":200},"responseTime":12,"msg":"request completed"}
+```
+
+The same `id` is returned to the caller in the `X-Request-Id` response header, so a
+reported problem can be found in the logs by its id.
+
+### Files changed
+
+- `server/src/config.js`: `PORT`, `NODE_ENV`, `LOG_LEVEL`, and the production checks
+- `server/src/server.js`: configurable port, graceful shutdown, fatal-error logging
+- `server/src/app.js`: request logger first, the health routes before the limiter,
+  `X-Request-Id` exposed to browsers
+- `server/src/logger.js`, `server/src/middleware/requestLogger.js`: new
+- `server/src/middleware/errorHandler.js`: logs 5xx errors through the request logger
+- `server/src/services/healthService.js`, `controllers/healthController.js`,
+  `routes/health.js`: new
+- `server/tests/`: `health.test.js`, `config.test.js`, `observability.test.js` added;
+  `errorHandler.test.js` rewritten
+- `render.yaml`: deployment blueprint
+- `.github/workflows/ci.yml`, `.github/dependabot.yml`: CI and dependency updates
+- `server/.gitignore`, `server/.env.test`, `server/package.json`: small updates
+- `README.md`, `CHANGELOG.md`
+
+### Known limitations
+
+- On the free hosting plans, the API and the database both sleep when idle, so the
+  first request after a quiet period is slow. An uptime monitor pinging the liveness
+  path keeps the API awake but uses its free hours.
+- There is no error-tracking service, metrics, or dashboards: monitoring is an
+  uptime ping with email alerts, plus searchable logs on the hosting platform.
+- There is no staging environment: a commit that passes CI deploys to production.
+- There is no migration tool. `schema.sql` creates missing tables safely but cannot
+  alter existing ones, so a column change needs manual SQL.
+- No backup or restore procedure is documented for the hosted database.
+- No automated tests for the web app (planned: Vitest and React Testing Library).
+- Rate-limit counters live in memory (reset on restart, not shared across
+  instances), and limits are per IP address.
+- The browser token is kept in `localStorage`, which any script on the page can
+  read; there is no refresh token or server-side revocation.
+- The site runs on the hosting platform's domain; there is no custom domain.
+
 ## 10-26-2026
 ### Version 0.7.0
 
