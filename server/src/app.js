@@ -2,6 +2,8 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config.js';
+import { logger } from './logger.js';
+import { createRequestLogger } from './middleware/requestLogger.js';
 import { generalLimiter } from './middleware/rateLimiters.js';
 import healthRoutes from './routes/health.js';
 import ingredientsRoutes from './routes/ingredients.js';
@@ -17,6 +19,7 @@ if (config.trustProxy  > 0) {
     app.set('trust proxy', config.trustProxy);
 }
 
+app.use(createRequestLogger(logger));
 
 app.use(helmet());
 
@@ -25,6 +28,7 @@ app.use(
         origin: config.corsOrigins,
         methods: ['GET', 'POST', 'DELETE'],
         allowedHeaders: ['Content-Type', 'Authorization'],
+        exposedHeaders: ['X-Request-Id'],
         maxAge: 600,
     })
 );

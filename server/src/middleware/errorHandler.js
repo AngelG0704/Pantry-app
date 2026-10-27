@@ -1,12 +1,17 @@
-export function errorHandler(err, req, res, next){
-    console.error(`${req.method} ${req.originalUrl}`, err);
+import { logger } from '../logger.js';
 
-    if (res.headersSent) {
-        return next(err);
-    }
+export function errorHandler(err, req, res, next) {
+  const status = err.status ?? 500;
 
-    const status = err.status ?? 500;
-    res.status(status).json({
-        error: status >= 500 ? 'Something went wrong' : err.message,
-    });
+  if (status >= 500) {
+    (req.log ?? logger).error({ err }, 'request failed');
+  }
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  res.status(status).json({
+    error: status >= 500 ? 'Something went wrong' : err.message,
+  });
 }

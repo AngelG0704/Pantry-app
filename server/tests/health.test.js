@@ -33,7 +33,6 @@ describe('health and failure handling', () => {
   });
 
   it('turns a database failure on a normal route into a controlled 500', async () => {
-    mock.method(console, 'error', () => {});
     mock.method(pool, 'query', async () => {
       throw new Error('connection refused to 10.0.0.5:5432');
     });
