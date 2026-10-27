@@ -1,13 +1,16 @@
 # Pantry App
 
+![CI](https://github.com/AngelG0704/pantry-app/actions/workflows/ci.yml/badge.svg)
+
 Tell the app what's in your kitchen, and it tells you what you can cook, ranked by
 how many ingredients you already have and listing exactly what's missing.
 
-
+**Live site:** https://pantry-client-ag.onrender.com
 
 **Status:** the full stack app (API, database, accounts, saved pantry, recipe
-matching, and a React web app) is complete, tested, and hardened through **v0.7.0**.
-Deployment is planned. See the [Roadmap](#roadmap).
+matching, and a React web app) is complete, tested, hardened, and deployable
+through **v0.8.0**, with automated CI/CD and structured logging. See the
+[Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
 
@@ -24,8 +27,11 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen
-- **A tested, hardened API:** 111 automated tests, rate limiting, a CORS
+- **A tested, hardened API:** 133 automated tests, rate limiting, a CORS
   allowlist, security headers, and schema-validated input
+- **Production-ready:** health checks, graceful shutdown, safety checks on
+  production settings, structured logs with request ids, and a CI pipeline that
+  gates deployment
 
 ## Tech stack
 
@@ -39,9 +45,12 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 | Sessions | JSON Web Tokens (`jsonwebtoken`, HS256, 1-hour expiry) |
 | Input validation | `zod` |
 | Security | `helmet` (headers), `cors` (origin allowlist), `express-rate-limit` |
+| Logging | `pino` and `pino-http` (structured JSON logs) |
 | Configuration | `dotenv` (server), Vite environment files (client) |
 | Automated tests | Node's built-in test runner and `supertest` (server) |
 | Manual API testing | Postman |
+| CI/CD | GitHub Actions, Dependabot |
+| Hosting | Render (API and static site), Neon (PostgreSQL) |
 
 ---
 
@@ -64,13 +73,15 @@ never trusted to enforce anything.
 Every API request passes through the same stages, in this order:
 
 ```
-helmet → cors → rate limit → JSON parser → route → (authenticate) → validate → controller → service → database
+request logger → helmet → cors → (health checks) → rate limit → JSON parser → route → (authenticate) → validate → controller → service → database
 ```
 
 | Stage | Job |
 |---|---|
+| **request logger** | Assigns a request id, returns it in `X-Request-Id`, and writes one log line per request |
 | **helmet** | Adds security headers to every response and removes `X-Powered-By` |
 | **cors** | Lets only allowlisted origins read responses; answers preflight requests before authentication |
+| **health checks** | `/api/health` and `/api/health/live`, answered before rate limiting |
 | **rate limit** | Caps requests per client; stricter limits on login and registration |
 | **JSON parser** | Parses bodies, rejecting anything over 10 KB |
 | **authenticate** | Verifies the bearer token and sets `req.user` (protected routes only) |
@@ -83,7 +94,7 @@ helmet → cors → rate limit → JSON parser → route → (authenticate) → 
 | Layer | Job | Knows about HTTP? | Knows about SQL? |
 |---|---|---|---|
 | **Routes** | Map a method and URL to a chain of middleware and a controller | Yes | No |
-| **Middleware** | Cross-cutting concerns: authentication, validation, rate limiting, errors | Yes | No |
+| **Middleware** | Cross-cutting concerns: logging, authentication, validation, rate limiting, errors | Yes | No |
 | **Controllers** | Read validated input, choose the status code, send the response | Yes | No |
 | **Services** | Run queries and shape the data | **No** | Yes |
 
@@ -98,12 +109,25 @@ Rules the code follows:
 - Every SQL value travels as a parameter (`$1`, `$2`). User input is never
   concatenated into a query string.
 
+### Production architecture
+
+```
+GitHub ──push──▶ GitHub Actions (tests, lint, build) ──all green──▶ Render deploys
+
+Browser ──HTTPS──▶ Static site (React bundle)
+   └────HTTPS────▶ API web service (Express) ──TLS──▶ PostgreSQL (Neon)
+```
+
 ### Project structure
 
 ```
 pantry-app/
 ├── README.md
 ├── CHANGELOG.md
+├── render.yaml               # deployment blueprint (API and web app)
+├── .github/
+│   ├── workflows/ci.yml      # tests, lint, and build on every push and pull request
+│   └── dependabot.yml        # weekly dependency and action updates
 ├── postman/                  # Postman collection and environment
 ├── server/
 │   ├── .env                  # secrets (never committed)
@@ -111,22 +135,23 @@ pantry-app/
 │   ├── package.json
 │   ├── src/
 │   │   ├── app.js            # builds the Express app and exports it
-│   │   ├── server.js         # starts the server
+│   │   ├── server.js         # starts the server; handles shutdown and fatal errors
 │   │   ├── config.js         # loads and validates settings
+│   │   ├── logger.js         # the shared structured logger
 │   │   ├── constants.js      # shared limits
-│   │   ├── controllers/      # auth, ingredient, pantry, recipe
+│   │   ├── controllers/      # auth, health, ingredient, pantry, recipe
 │   │   ├── db/
 │   │   │   ├── pool.js       # the shared PostgreSQL connection pool
 │   │   │   ├── schema.sql    # table definitions (idempotent)
 │   │   │   ├── seedData.js   # recipes and ingredients
 │   │   │   └── seed.js       # applies the schema and data
-│   │   ├── middleware/       # requireAuth, validate, rateLimiters, errorHandler, notFound
-│   │   ├── routes/           # auth, ingredients, pantry, recipes
-│   │   ├── services/         # auth, token, ingredient, pantry, recipe
+│   │   ├── middleware/       # requireAuth, validate, rateLimiters, requestLogger, errorHandler, notFound
+│   │   ├── routes/           # auth, health, ingredients, pantry, recipes
+│   │   ├── services/         # auth, health, token, ingredient, pantry, recipe
 │   │   └── validation/       # zod schemas
 │   └── tests/                # automated tests and helpers
 └── client/
-    ├── .env.development      # the API's address (not a secret)
+    ├── .env.development      # the API's address for development (not a secret)
     ├── package.json
     ├── vite.config.js
     └── src/
@@ -223,6 +248,9 @@ Optional settings, all validated at startup:
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `PORT` | `3000` | The port to listen on; hosting platforms set this for you |
+| `NODE_ENV` | `development` | Set to `production` when deployed; this switches on stricter startup checks |
+| `LOG_LEVEL` | `debug` (`info` in production) | One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated browser origins allowed to read API responses. Exact origins only: no path, trailing slash, or wildcard. |
 | `TRUST_PROXY` | `0` | Number of reverse proxies in front of the app (0 to 5). Set this when deployed behind a proxy, never to `true`. |
 | `RATE_LIMIT_GENERAL_MAX` | `300` | Requests per 15 minutes per IP, across `/api` |
@@ -237,6 +265,8 @@ Notes:
   percent-encode them in the URL (for example `@` becomes `%40`).
 - The server refuses to start if `JWT_SECRET` is missing or shorter than
   32 characters, or if any optional setting is malformed. Never commit `.env`.
+- With `NODE_ENV=production`, it also refuses to start unless `CORS_ORIGINS` is set
+  explicitly with `https://` origins only and `BCRYPT_ROUNDS` is at least 10.
 
 ### 4. Create the tables and load the data
 
@@ -342,10 +372,13 @@ on the server.
 
 ## API overview
 
-The server listens on port 3000. All responses are JSON.
+The server listens on port 3000 by default (or the `PORT` it is given). All
+responses are JSON.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
+| GET | `/api/health/live` | none | Liveness: is the process running? |
+| GET | `/api/health` | none | Readiness: is the database reachable? (`200` or `503`) |
 | GET | `/api/ingredients` | none | List all ingredients |
 | GET | `/api/recipes/:id` | none | One recipe with its ingredient names |
 | GET | `/api/recipes/match` | none | Rank recipes against ingredient ids in the URL |
@@ -378,9 +411,12 @@ Exact request and response details for each endpoint are in
   | `413` | The JSON body is larger than 10 KB |
   | `429` | Too many requests; see the `Retry-After` header |
   | `500` | Server failure; the client gets a vague message and the details go to the server log |
+  | `503` | `/api/health` only: the database is not reachable |
 
-- Every `/api` response carries `RateLimit` and `RateLimit-Policy` headers showing
-  the caller's remaining budget.
+- Every response carries an `X-Request-Id` header; quote it when reporting a
+  problem so it can be found in the logs.
+- Every `/api` response except the health checks carries `RateLimit` and
+  `RateLimit-Policy` headers showing the caller's remaining budget.
 - A well-formed query that matches nothing returns `200` with `[]`, not a 404.
 
 ### Example: matching
@@ -443,11 +479,10 @@ cannot see or change another user's pantry.
 | **Request size limit** | JSON bodies over 10 KB are rejected. |
 | **Password handling** | bcrypt hashes; login takes the same time for unknown emails; identical error for a wrong password and an unknown email. |
 | **Tokens** | Signed with HS256, one-hour expiry, algorithm pinned on verification. Kept in `localStorage` in the browser (see the trade-off above). |
+| **Production startup checks** | With `NODE_ENV=production`, the server refuses to start with a weak bcrypt cost, a missing `CORS_ORIGINS`, or a non-HTTPS origin. |
+| **Log hygiene** | Logs name exactly what they record (request id, method, path without the query string, status, timing, user id). Bodies, headers, cookies, tokens, and passwords are never written, and a test enforces it. |
 | **No injected markup** | The web app renders stored text as text. `VITE_` variables are public in the browser bundle, so they never hold secrets. |
 | **Database as last defense** | Unique constraints, foreign keys, and a lowercase-email check reject bad data even if application code is wrong. |
-
-When deploying behind a reverse proxy, set `TRUST_PROXY` to the number of proxies
-so rate limits see each client's real address.
 
 ---
 
@@ -474,7 +509,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **111 automated tests** and runs against a separate database, so it
+The server has **133 automated tests** and runs against a separate database, so it
 never touches your development data. The web app has no automated tests yet.
 
 ### One-time setup
@@ -495,6 +530,7 @@ never touches your development data. The web app has no automated tests yet.
    RATE_LIMIT_GENERAL_MAX=10000
    RATE_LIMIT_LOGIN_MAX=5000
    RATE_LIMIT_REGISTER_MAX=1000
+   LOG_LEVEL=silent
    ```
 
    The rate limits are deliberately different from each other and very high, so
@@ -523,10 +559,13 @@ npm test -- --test-name-pattern="tampered"
 | `auth.test.js` | 24 | Hashing, login rules, token forgery, expiry, deleted accounts |
 | `matching.test.js` | 20 | Ranking, scoring, missing ingredients, `maxMissing`, input validation |
 | `pantry.test.js` | 32 | Authentication on every route, ownership, idempotency, cascade, pantry matching |
-| `errorHandler.test.js` | 4 | Internals never leak to clients |
+| `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
 | `security.test.js` | 7 | Headers, CORS allowlist and preflight, body size limit |
 | `rateLimit.test.js` | 8 | Limiter behavior, and which limiter guards which route |
 | `validation.test.js` | 10 | Error shape, normalization, messages clients rely on |
+| `health.test.js` | 6 | Health and liveness checks, and database outages becoming controlled responses |
+| `config.test.js` | 7 | Startup checks, run in a fresh process for each case |
+| `observability.test.js` | 9 | Request ids, log levels, and that no secrets reach the logs |
 
 ### How the tests stay safe and repeatable
 
@@ -537,6 +576,8 @@ npm test -- --test-name-pattern="tampered"
   (restarting ids), and inserts a small fixture set that is independent of the
   production seed data.
 - **Files run one at a time**, since they share a database.
+- **Failures are simulated, not caused:** database outages are tested by replacing
+  `pool.query` with a function that throws.
 
 ### Manual testing
 
@@ -550,6 +591,146 @@ regressions; Postman is for exploring.
 
 ---
 
+## Continuous integration and deployment
+
+### The pipeline
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request.
+Two jobs run in parallel, each on a fresh Linux machine:
+
+| Job | What it does |
+|---|---|
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 133 tests |
+| **Client lint and build** | Installs from the lockfile, runs ESLint, and builds the production bundle |
+
+The workflow has read-only repository permissions, and a newer push cancels an
+older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
+for outdated server packages, client packages, and GitHub Actions; they run the
+same checks.
+
+Because CI starts from a clean machine, it catches things your laptop hides: a file
+you forgot to commit, a missing setting, or a filename casing mistake (Windows
+ignores case; Linux does not).
+
+### Recommended workflow
+
+1. Make changes on a branch, push it, and open a pull request.
+2. Wait for both checks to pass.
+3. Merge into `main`. Render then deploys the commit, but only if its checks passed.
+
+In your GitHub repository settings, require both checks before merging into `main`
+(if your plan supports it for private repositories).
+
+---
+
+## Deployment
+
+The blueprint in `render.yaml` describes two services: the API (a Node web service)
+and the web app (a static site with a single-page-app rewrite rule). The database
+is a separate hosted PostgreSQL (Neon). Both Render services deploy automatically
+**only after CI checks pass** (`autoDeployTrigger: checksPass`).
+
+### Settings that matter in production
+
+**API service** (set in the Render dashboard; values marked secret are never
+written to Git):
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` (set in the blueprint) |
+| `TRUST_PROXY` | `1`, matching the one proxy hop on Render (verify this once; see below) |
+| `DATABASE_URL` | The hosted database's **direct** connection string (secret). It must include `sslmode=require`. |
+| `JWT_SECRET` | A **new** secret for production, not the one you use locally (secret) |
+| `CORS_ORIGINS` | The web app's exact address, for example `https://your-client.onrender.com` (no trailing slash) |
+
+**Web app service:**
+
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | The API's `https://` address. **This is embedded when the app is built**, so changing it requires a rebuild (a manual deploy). |
+
+### First deployment, step by step
+
+1. **Push the repository to GitHub.** Check first that `server/.env` and
+   `server/.env.test` are not tracked (`git ls-files | Select-String '\.env'` should
+   list only `client/.env.development`).
+2. **Create the database** at your PostgreSQL host and copy its direct connection
+   string.
+3. **Load the recipe catalog** from your machine, using the hosted connection string
+   for one command only:
+
+   ```powershell
+   $env:DATABASE_URL = 'PASTE-THE-CONNECTION-STRING-HERE'
+   npm run db:seed
+   Remove-Item Env:DATABASE_URL
+   ```
+
+4. **Edit the two `CHANGEME` service names** in `render.yaml` (names become part of
+   the public address), then commit and push.
+5. In Render, create a **Blueprint** from the repository and enter the secret
+   values when asked. Use temporary guesses for the two address variables.
+6. **Second pass:** once both services exist, set the API's `CORS_ORIGINS` to the
+   web app's real address, set the web app's `VITE_API_URL` to the API's real
+   address, and redeploy the web app so the new address is built in.
+
+### Verifying a deployment
+
+```powershell
+curl.exe -i https://pantry-api-ag.onrender.com/api/health/live
+curl.exe -i https://pantry-api-ag.onrender.com/api/health
+curl.exe -i -H "Origin: https://pantry-client-ag.onrender.com" https://pantry-api-ag.onrender.com/api/ingredients
+```
+
+You should see `200` from both health checks (`"database":"up"` from the second),
+and on the third a matching `Access-Control-Allow-Origin`, a
+`Strict-Transport-Security` header, and no `X-Powered-By`. Then register in the web
+app, build a pantry, and refresh a deep link such as `/recipes/2` to confirm the
+rewrite rule works.
+
+**Check `TRUST_PROXY` once.** Temporarily log `req.ip` in the health handler, call
+the API from your own machine, and compare the logged address with your public IP.
+If it shows an internal address, raise `TRUST_PROXY`; if everyone is rate limited at
+once, it is too low. Remove the log line afterward.
+
+### What to expect on the free plans
+
+The API sleeps after about 15 idle minutes, and waking takes around a minute; the
+database also sleeps and wakes in a few seconds. The first request after a quiet
+period is therefore slow. An uptime monitor pinging `/api/health/live` keeps the API
+awake but uses its free hours, and pinging the deep `/api/health` often would also
+keep the database awake and use its compute allowance. Free-plan limits change, so
+check each provider's current terms.
+
+---
+
+## Observability
+
+- **Structured logs.** Each request writes one JSON line (request id, method, path,
+  status, response time, and the numeric user id when logged in) at a level that
+  follows the status: `info` for 2xx and 3xx, `warn` for 4xx, `error` for 5xx. In a
+  terminal during development the logs are colorized and readable; elsewhere they
+  are raw JSON. Set `LOG_LEVEL` to change the verbosity.
+- **Request ids.** Every response includes `X-Request-Id`. To investigate a report,
+  get the id (browser Network tab, or from the user) and search the logs for it. If
+  a caller sends a safe `X-Request-Id` (8 to 64 letters, digits, or dashes), it is
+  reused; anything else is replaced.
+- **Server errors keep their details server-side.** A 5xx logs the real error and
+  stack trace with the request id, while the client only sees "Something went
+  wrong."
+- **Health checks.** `/api/health/live` says the process is running and is what the
+  hosting platform probes. `/api/health` also checks the database and returns `503`
+  with no error text when it cannot answer. Neither is rate limited, and the
+  liveness check is not logged.
+- **Monitoring.** Point an uptime monitor at `/api/health/live` (a free plan with
+  5-minute checks is enough) and send alerts to your email. Confirm the alert path
+  works by pointing a second monitor at a URL that returns 404 and watching it
+  alert, then delete it.
+- **Shutdown and crashes.** On `SIGTERM` or `SIGINT` the server finishes in-flight
+  requests, closes the database pool, and exits. Unhandled errors are logged as
+  `fatal` before the process exits.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause and fix |
@@ -560,15 +741,24 @@ regressions; Postman is for exploring.
 | `database "pantry" does not exist` | Create it (step 2 of Getting started). |
 | `relation "..." does not exist` | Run `npm run db:seed`. |
 | `JWT_SECRET must be set...` on startup | Add a secret of at least 32 characters to `.env` and restart. |
-| `CORS_ORIGINS must be a comma-separated list...` on startup | An entry has a path, a trailing slash, or is a wildcard. Use exact origins like `http://localhost:5173`. |
+| `CORS_ORIGINS must be...` on startup | An entry has a path, a trailing slash, or is a wildcard, or (in production) is missing or not `https://`. Use exact origins like `https://your-client.onrender.com`. |
+| `BCRYPT_ROUNDS must be at least 10 in production` | A test setting leaked into production: remove `BCRYPT_ROUNDS` or set it to 10 or more. |
+| `LOG_LEVEL must be one of...` on startup | A typo in `LOG_LEVEL`. |
 | Changes to `.env` have no effect | It is read once at startup. Stop and restart the server. |
 | `401` on a protected route | The token is missing, malformed, or expired (tokens last one hour). Log in again. |
 | `429 Too many requests` while testing by hand | A rate limit tripped. Restart the dev server to reset the in-memory counters, or raise the limits in `.env`. |
+| Everyone gets `429` at once in production | `TRUST_PROXY` is too low, so all users look like one address. Check it as described under Deployment. |
 | Web app shows "Could not reach the server" | The API isn't running, or the browser blocked the request. Open the browser console: **CORS policy** means the page's origin isn't in `CORS_ORIGINS`; `ERR_CONNECTION_REFUSED` means the API is down or `VITE_API_URL` is wrong. |
 | Browser console says **Content Security Policy** | The *page* is blocking the request (not the API). Check the page's own headers. |
-| Requests go to `undefined/api/...` | `client/.env.development` is missing or misnamed, or the client wasn't restarted after editing it. |
+| Requests go to `undefined/api/...` | `client/.env.development` is missing or misnamed, or (in production) `VITE_API_URL` was not set before the build. Set it and redeploy the web app. |
 | Vite says port 5173 is already in use | Another dev server holds the port. Close it; the client is pinned to 5173 because the API's default CORS allowlist expects it. |
 | You are logged out unexpectedly | The token expired (one hour) or the server's `JWT_SECRET` changed. Log in again. |
+| First request in production hangs for about a minute | The free-plan cold start: the API (and then the database) is waking up. |
+| `/api/health` returns `503` but `/api/health/live` is fine | The database is unreachable or still waking. Check `DATABASE_URL`, then retry after a few seconds. |
+| Refreshing `/recipes/2` gives a 404 in production | The static site's rewrite rule (`/*` to `/index.html`) is missing. |
+| CI fails with `Cannot find module` on a path that works locally | A filename casing mismatch (Linux is case-sensitive). Make the import match the real name. |
+| CI fails with `node: .env.test: not found` | The workflow's "Create the test environment file" step is missing or ran in the wrong folder. |
+| Render never deploys after a push | No CI checks were detected for the commit, or a check failed. Open the GitHub Actions tab. |
 | `Refusing to run tests: database "..." does not end with "_test"` | You ran the tests without `.env.test`. Use `npm test`. |
 | `bad option: --env-file` | Node is older than 20.10. Update it. |
 | PowerShell says `Supply values for the following parameters` after `curl` | `curl` is an alias for `Invoke-WebRequest`. Use `curl.exe`, or Postman. |
@@ -586,13 +776,24 @@ regressions; Postman is for exploring.
 | 5 | Users and persistence: accounts, authentication, per-user pantry, matching from the pantry | Done |
 | 6 | Quality and hardening: automated tests, security headers, CORS, rate limiting, schema validation | Done |
 | 7 | Frontend: React app, ingredient picker, results, recipe detail, accounts, saved pantry | Done |
-| 8 | Shipping: deployment, CI/CD, logging and monitoring | Planned |
+| 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
+
+Ideas for what could come next: automated tests for the web app (Vitest and React
+Testing Library), an error-tracking service, a database migration tool, a staging
+environment, cookie-based sessions with refresh tokens, bulk pantry operations,
+and an accessibility audit.
 
 ## Known limitations
 
-- Not deployed yet. HTTPS is not enforced, so passwords and tokens are only safe
-  over HTTPS, and the HSTS header only takes effect once the API is served over it.
-- No automated tests for the web app, and no CI pipeline.
+- On the free hosting plans, the API and the database both sleep when idle, so the
+  first request after a quiet period is slow.
+- No automated tests for the web app, and no staging environment: a commit that
+  passes CI deploys to production.
+- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping
+  with email alerts, plus searchable logs on the hosting platform.
+- No migration tool: `schema.sql` creates missing tables safely but cannot alter
+  existing ones, so a column change needs manual SQL. No backup or restore
+  procedure is documented for the hosted database.
 - The token is stored in `localStorage`, where any script on the page could read
   it. Tokens cannot be revoked before they expire, and there is no refresh token,
   password reset, or email verification.
@@ -605,6 +806,7 @@ regressions; Postman is for exploring.
 - Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls) but
   has not been audited.
+- The site runs on the hosting platform's domain, not a custom one.
 
 ## Changelog
 
