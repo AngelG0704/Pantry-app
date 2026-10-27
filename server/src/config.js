@@ -77,6 +77,13 @@ if (!Number.isInteger(trustProxy) || trustProxy < 0 || trustProxy > 5){
     throw new Error('TRUST_PROXY must be an integer from 0 to 5 (the number of proxies in front of the app).');
 }
 
+const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'];
+const logLevel = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
+
+if (!LOG_LEVELS.includes(logLevel)) {
+    throw new Error(`LOG_LEVEL must be one of : ${LOG_LEVELS.join(',')}.`);
+}
+
 export const config = {
     nodeEnv,
     isProduction,
@@ -86,6 +93,7 @@ export const config = {
     bcryptRounds,
     corsOrigins,
     trustProxy,
+    logLevel,
     rateLimits: {
         general: readPositiveInteger('RATE_LIMIT_GENERAL_MAX', 300),
         login: readPositiveInteger('RATE_LIMIT_LOGIN_MAX', 10),

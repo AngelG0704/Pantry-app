@@ -18,6 +18,7 @@ for (const name of [
   'RATE_LIMIT_GENERAL_MAX',
   'RATE_LIMIT_LOGIN_MAX',
   'RATE_LIMIT_REGISTER_MAX',
+  'LOG_LEVEL'
 ]) {
   delete baseEnv[name];
 }
@@ -70,6 +71,7 @@ const cases = [
     /BCRYPT_ROUNDS/,
   ],
   ['refuses an invalid PORT', { PORT: '99999' }, false, /PORT/],
+  ['refuses an unknown LOG_LEVEL', { LOG_LEVEL: 'loud' }, false, /LOG_LEVEL/],
 ];
 
 describe('configuration checks at startup', () => {
