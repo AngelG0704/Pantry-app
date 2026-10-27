@@ -18,6 +18,12 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - type: web
+        name: pantry-api-CHANGEME
+        runtime: node
+        plan: free
+        rootDir: server
+        autoDeployTrigger: checksPass        
 
   - type: web
     name: pantry-client-AG
@@ -28,6 +34,11 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+      - type: web
+        name: pantry-client-CHANGEME
+        runtime: static
+        rootDir: client
+        autoDeployTrigger: checksPass        
     routes:
       - type: rewrite
         source: /*
