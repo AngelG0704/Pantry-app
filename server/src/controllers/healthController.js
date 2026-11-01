@@ -1,5 +1,7 @@
 import * as healthService from '../services/healthService.js';
 
+console.log(req.ip);
+
 export function getLive(req, res) {
     res.json({ status: "ok" });
 }
