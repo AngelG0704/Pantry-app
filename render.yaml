@@ -7,6 +7,7 @@ services:
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health/live
+    autoDeployTrigger: checksPass        
     envVars:
       - key: NODE_ENV
         value: production
@@ -18,12 +19,6 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
-      - type: web
-        name: pantry-api-CHANGEME
-        runtime: node
-        plan: free
-        rootDir: server
-        autoDeployTrigger: checksPass        
 
   - type: web
     name: pantry-client-AG
@@ -31,14 +26,10 @@ services:
     rootDir: client
     buildCommand: npm ci --include=dev && npm run build
     staticPublishPath: dist
+    autoDeployTrigger: checksPass
     envVars:
       - key: VITE_API_URL
         sync: false
-      - type: web
-        name: pantry-client-CHANGEME
-        runtime: static
-        rootDir: client
-        autoDeployTrigger: checksPass        
     routes:
       - type: rewrite
         source: /*

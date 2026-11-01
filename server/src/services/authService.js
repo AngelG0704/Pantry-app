@@ -6,7 +6,7 @@ const SALT_ROUNDS = config.bcryptRounds;
 const DUMMY_HASH = await bcrypt.hash('not-a-real-password', SALT_ROUNDS);
 
 function toUser(row) {
-    return { id: row.id, email: row.email, createdAt: row.createdAt };
+    return { id: row.id, email: row.email, createdAt: row.created_at };
 }
 
 export async function registerUser(email, password) {
