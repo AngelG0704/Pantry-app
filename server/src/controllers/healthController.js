@@ -6,7 +6,6 @@ export function getLive(req, res) {
 }
 
 export async function getHealth(req, res) {
-    console.log(req.ip);
     const databaseUp = await healthService.isDatabaseUp();
 
     if (!databaseUp){
