@@ -1,12 +1,12 @@
 import * as healthService from '../services/healthService.js';
 
-console.log(req.ip);
 
 export function getLive(req, res) {
     res.json({ status: "ok" });
 }
 
 export async function getHealth(req, res) {
+    console.log(req.ip);
     const databaseUp = await healthService.isDatabaseUp();
 
     if (!databaseUp){
