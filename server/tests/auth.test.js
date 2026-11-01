@@ -153,6 +153,13 @@ describe('authentication', () => {
       assert.equal(res.body.user.email, 'me@example.com');
     });
 
+    it('returns a real creation date', async () => {
+      const res = await api.get('/api/auth/me').set(bearer(session.token));
+
+      assert.equal(typeof res.body.user.createdAt, 'string');
+      assert.ok(!Number.isNaN(Date.parse(res.body.user.createdAt)));
+    });
+
     it('rejects a missing token with 401', async () => {
       const res = await api.get('/api/auth/me');
 

@@ -23,7 +23,7 @@ export async function login(req, res, next) {
         
         const user = await authService.authenticateUser(email, password);
         if (!user) {
-            return res.status(401).json({ error: 'Invalid email or passeword' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
         res.json({ token: signToken(user.id), user});

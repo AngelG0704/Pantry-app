@@ -27,6 +27,12 @@ describe('catalog (public read endpoints)', () => {
       assert.deepEqual(res.body.ingredients, ['bread', 'butter', 'cheese']);
     });
 
+    it('returns the prep time under the same name the list endpoint uses', async () => {
+      const res = await api.get('/api/recipes/2');
+
+      assert.equal(res.body.prepMinutes, 10);
+    });
+
     it('returns 404 for a recipe that does not exist', async () => {
       const res = await api.get('/api/recipes/999');
 

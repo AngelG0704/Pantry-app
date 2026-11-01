@@ -13,5 +13,4 @@ pool.on('error', (err)=>{
     console.error('Unexpected error on idle database client', err);
 });
 
-console.log('pool.js loaded');
 export default pool;

@@ -21,7 +21,7 @@ export async function getRecipeById(id) {
         id: recipeId,
         title,
         instructions,
-        prepminutes: prep_minutes,
+        prepMinutes: prep_minutes,
         ingredients: result.rows.map((row) => row.ingredient),
     };
 }
