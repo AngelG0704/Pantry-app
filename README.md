@@ -9,7 +9,7 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Status:** the full stack app (API, database, accounts, saved pantry, recipe
 matching, and a React web app) is complete, tested, hardened, and deployable
-through **v0.8.0**, with automated CI/CD and structured logging. See the
+through **v1.0.0**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -27,7 +27,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen
-- **A tested, hardened API:** 133 automated tests, rate limiting, a CORS
+- **A tested, hardened API:** 135 automated tests, rate limiting, a CORS
   allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
@@ -509,7 +509,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **133 automated tests** and runs against a separate database, so it
+The server has **135 automated tests** and runs against a separate database, so it
 never touches your development data. The web app has no automated tests yet.
 
 ### One-time setup
@@ -601,7 +601,7 @@ Two jobs run in parallel, each on a fresh Linux machine:
 | Job | What it does |
 |---|---|
 | **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 133 tests |
-| **Client lint and build** | Installs from the lockfile, runs ESLint, and builds the production bundle |
+| **Client lint and build** | Installs from the lockfile, runs oxlint, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
