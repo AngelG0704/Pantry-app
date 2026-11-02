@@ -3,6 +3,186 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-01-2026
+### Version 1.1.0: Frontend tests
+
+The web app now has an automated test suite (67 tests) built on Vitest, jsdom, and
+React Testing Library, and the CI pipeline runs it on every push and pull request,
+between lint and build. A failing client test now stops the build and, through the
+deploy gate, stops a deployment. No application behavior changed.
+
+### Added
+
+- **Client test tooling:** Vitest (runner), jsdom (a fake browser), React Testing
+  Library, `user-event`, and `jest-dom` (readable assertions).
+- **Configuration:** the `test` section in `client/vite.config.js` (jsdom
+  environment, a setup file, and a fixed `VITE_API_URL` of `http://api.test`), and
+  `client/src/test/setup.js` (registers the assertions and cleans up after each test).
+- **Scripts:** `npm test` (run once, for CI) and `npm run test:watch` (re-run on save).
+- **67 client tests in 9 files:**
+  - `api.test.js` (18): request building, the `204` case, `ApiError`, network
+    failures, abort handling, the unauthorized handler, query strings.
+  - `auth/AuthProvider.test.jsx` (11): startup, the `checking` state, login,
+    register, logout, the unauthorized handler, `useAuth` outside the provider.
+  - `components/RequireAuth.test.jsx` (3): the three session states.
+  - `pages/LoginPage.test.jsx` (6): return to the original page, per-field errors,
+    the submitting state.
+  - `hooks/usePantry.test.js` (12): loading, retry, optimistic updates, rollback,
+    the `404` rules, requests in flight.
+  - `pages/RecipePage.test.jsx` (10): loading, display, marks, errors, retry.
+  - `pages/AccountPage.test.jsx` (2), `components/SiteHeader.test.jsx` (4),
+    `pages/NotFoundPage.test.jsx` (1).
+- **CI:** a `Test` step in the client job, after `Lint` and before `Build`.
+- Dev dependencies: `vitest`, `jsdom`, `@testing-library/react`,
+  `@testing-library/user-event`, `@testing-library/jest-dom`.
+
+### Behavior
+
+- **Tests never touch the network or a real server.** `fetch` is replaced in the
+  `api.js` tests, `api.js` is replaced in the provider, hook, and page tests, and the
+  API address in tests is a fake host that does not exist.
+- **Every test starts from an empty page.** Rendered components are removed after
+  each test, and mocks and stored tokens are reset between tests.
+- **The client CI job runs in this order:** install, lint, test, build. A failing
+  test fails the job, the build is skipped, and Render does not deploy that commit.
+- No application code changed in this phase.
+
+### Validation (what the client tests pin down)
+
+| Input | Rule |
+|---|---|
+| `401` on a request that carried a token | Runs the unauthorized handler once |
+| `401` on a request with no token (failed login) | Does not run the handler |
+| `204` response | Returns `null` without reading a body |
+| Network failure | `ApiError` with no `status`; an abort is rethrown unchanged |
+| `maxMissing` of `"0"` | Sent to the API (zero is a real choice) |
+| Pantry removal answered with `404` | Counts as success (already gone) |
+| Pantry add answered with `404` | Rolled back with an error |
+| Recipe `404` or `400` | "We couldn't find that recipe", no retry button |
+| Recipe `5xx` or network error | Error message with a working retry button |
+| Failed pantry lookup on the recipe page | Silently falls back to the typed selection |
+| Recipe instructions containing HTML | Shown as text, never as markup |
+| Stored token whose check fails by network | Token kept; only a `401` clears it |
+
+### Implementation notes
+
+- **Mock the layer directly below the unit.** `api.js` tests replace `fetch`;
+  provider, hook, and page tests replace `api.js`; route-guard and form tests
+  replace `useAuth`. Each test ignores everything beneath the layer it replaces.
+- **Test what the user sees.** Elements are found by role, label, and visible text,
+  never by CSS class, so a test fails when behavior or accessibility breaks and not
+  when markup is restyled.
+- **Deferred promises** freeze a request in flight so the optimistic state can be
+  inspected, then release it inside `act` so React finishes updating before the
+  assertion.
+- **Dates are computed, not hardcoded.** The account page test builds its expected
+  text with `toLocaleDateString()`, since the output depends on the machine's locale
+  and timezone.
+- **The client and server tests agree through a contract, not through a shared
+  file.** The server tests pin which fields the API sends (`prepMinutes`,
+  `createdAt`); the client tests pin how those fields are read. Neither side can
+  detect a mismatch alone, which is how the `prepMinutes` bug in 1.0.1 got through.
+- Vite's `defineConfig` is imported from `vitest/config` so the `test` section is
+  understood; the dev server settings are unchanged.
+- To upgrade from 1.0.1: run `npm install` in `client/`, then `npm test`. In GitHub,
+  require the **Server tests** and **Client lint and build** checks before merging
+  into `main`.
+
+### Example
+
+```powershell
+cd client
+npm test
+```
+
+```
+ Test Files  9 passed (9)
+      Tests  67 passed (67)
+```
+
+### Files changed
+
+- `client/vite.config.js`: `test` section, `defineConfig` from `vitest/config`
+- `client/package.json`, `client/package-lock.json`: test scripts and dev dependencies
+- `client/src/test/setup.js`: new
+- `client/src/` (new test files): `api.test.js`, `auth/AuthProvider.test.jsx`,
+  `components/RequireAuth.test.jsx`, `components/SiteHeader.test.jsx`,
+  `hooks/usePantry.test.js`, `pages/AccountPage.test.jsx`,
+  `pages/LoginPage.test.jsx`, `pages/NotFoundPage.test.jsx`,
+  `pages/RecipePage.test.jsx`
+- `.github/workflows/ci.yml`: `Test` step in the client job
+- `README.md`, `CHANGELOG.md`
+
+### Known limitations
+
+- Not every screen is tested yet: `HomePage`, `PantryPage`, `RegisterPage`, the
+  picker, results, and form components, and the `useIngredients`, `useRecipeMatches`,
+  `useMyMatches`, and `useSearchState` hooks have no tests of their own.
+- No end-to-end tests: nothing runs the real client against the real API, so a
+  mismatch between the two halves is caught only if both sides' tests pin the same
+  field names.
+- No client coverage report and no browser-level tests (real browser, real layout).
+- No accessibility audit beyond the role and label queries the tests use.
+DATE-I-MERGED
+### Version 1.0.1: Fixes found while verifying the deployment
+
+Checking the first deployment turned up bugs that the 133 server tests could not
+see, because they were mismatches between the API and the web app or mistakes in
+configuration files. Each fix has a regression test where one is possible.
+
+### Added
+
+- **Server tests:** the recipe detail response returns the prep time under
+  `prepMinutes`, and `GET /api/auth/me` returns a real `createdAt` date. The server
+  suite is now 135 tests.
+
+### Behavior
+
+- **Account page:** "Member since" shows the real date (it showed "Invalid Date").
+- **Recipe detail page:** the prep time is shown (it was never displayed).
+- **Login failure message** now reads "Invalid email or password" (it had a typo).
+- **Client API address:** `client/.env.development` points to the local API.
+- **Deployment gate:** `autoDeployTrigger: checksPass` now sits on each service in
+  `render.yaml`, where Render reads it.
+
+### Validation
+
+No input rules changed.
+
+### Implementation notes
+
+- `toUser` read `row.createdAt`, but `pg` returns `created_at`; the service layer is
+  where database names become API names, so the mapper was corrected there.
+- `getRecipeById` returned `prepminutes`, while the list endpoint and the client use
+  `prepMinutes`.
+- `render.yaml` had service blocks nested inside `envVars`, so the deploy gate was
+  not applied as intended. No test could catch this, since tests never read it.
+- The 1.0.0 entry and the README said the client lint tool was ESLint; it is oxlint.
+- A leftover startup `console.log` was removed from `src/db/pool.js`.
+
+### Example
+
+```powershell
+curl.exe -i https://pantry-api-ag.onrender.com/api/recipes/2
+```
+
+The response body now contains `"prepMinutes": 10`.
+
+### Files changed
+
+- `server/src/services/authService.js`, `server/src/services/recipeService.js`
+- `server/src/controllers/authController.js`, `server/src/db/pool.js`
+- `server/tests/catalog.test.js`, `server/tests/auth.test.js`
+- `client/.env.development`, `render.yaml`
+- `README.md`, `CHANGELOG.md`
+
+### Known limitations
+
+- Mismatches between the API's response fields and the fields the web app reads are
+  caught only if both sides have tests that pin the same names.
+- Nothing validates `render.yaml` automatically, so a malformed deployment file shows
+  up only when Render reads it.
+
 ## 10-27-2026
 ### Version 1.0.0
 

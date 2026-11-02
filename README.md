@@ -9,7 +9,7 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Status:** the full stack app (API, database, accounts, saved pantry, recipe
 matching, and a React web app) is complete, tested, hardened, and deployable
-through **v1.0.0**, with automated CI/CD and structured logging. See the
+through **v1.1.0**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -27,8 +27,8 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen
-- **A tested, hardened API:** 135 automated tests, rate limiting, a CORS
-  allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 135 server tests and 67 web app tests, rate
+  limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -47,7 +47,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 | Security | `helmet` (headers), `cors` (origin allowlist), `express-rate-limit` |
 | Logging | `pino` and `pino-http` (structured JSON logs) |
 | Configuration | `dotenv` (server), Vite environment files (client) |
-| Automated tests | Node's built-in test runner and `supertest` (server) |
+| Automated tests | Node's built-in test runner and `supertest` (server); Vitest, jsdom, and React Testing Library (client) |
 | Manual API testing | Postman |
 | CI/CD | GitHub Actions, Dependabot |
 | Hosting | Render (API and static site), Neon (PostgreSQL) |
@@ -161,7 +161,8 @@ pantry-app/
         ├── auth/             # session context, provider, token storage
         ├── components/       # picker, chips, results, forms, header
         ├── hooks/            # data loading and state logic
-        └── pages/            # one component per screen
+        ├── pages/            # one component per screen
+        └── test/setup.js     # test setup (test files sit beside the code they test)
 ```
 
 ### Data model
@@ -326,7 +327,9 @@ address from `client/.env.development` (`VITE_API_URL`, default
 | `npm run dev` | Starts the Vite dev server on port 5173 |
 | `npm run build` | Builds the production bundle into `dist/` |
 | `npm run preview` | Serves the production build locally |
-| `npm run lint` | Checks the code with ESLint |
+| `npm run lint` | Checks the code with oxlint |
+| `npm test` | Runs the web app's tests once (what CI runs) |
+| `npm run test:watch` | Re-runs the web app's tests whenever you save |
 
 ---
 
@@ -510,7 +513,8 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 ## Testing
 
 The server has **135 automated tests** and runs against a separate database, so it
-never touches your development data. The web app has no automated tests yet.
+never touches your development data. The web app has **67 tests** that run without
+a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -555,8 +559,8 @@ npm test -- --test-name-pattern="tampered"
 
 | File | Tests | What it guards |
 |---|---|---|
-| `catalog.test.js` | 6 | Public reads, id validation, JSON 404s |
-| `auth.test.js` | 24 | Hashing, login rules, token forgery, expiry, deleted accounts |
+| `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
+| `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
 | `matching.test.js` | 20 | Ranking, scoring, missing ingredients, `maxMissing`, input validation |
 | `pantry.test.js` | 32 | Authentication on every route, ownership, idempotency, cascade, pantry matching |
 | `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
@@ -579,6 +583,32 @@ npm test -- --test-name-pattern="tampered"
 - **Failures are simulated, not caused:** database outages are tested by replacing
   `pool.query` with a function that throws.
 
+### Web app tests
+
+```bash
+cd client
+npm test
+npm run test:watch
+```
+Tests render a component into a fake browser (jsdom) and find things the way a
+user does: by role, label, and visible text. They never call a real API: `fetch` is
+replaced in the `api.js` tests, and `api.js` or `useAuth` is replaced in the rest.
+Before each test the page is emptied and mocks are reset.
+
+| File | Tests | What it guards |
+|---|---|---|
+| `api.test.js` | 18 | Request building, `ApiError`, network and abort handling, the unauthorized handler |
+| `AuthProvider.test.jsx` | 11 | The session states, login, register, logout, token storage |
+| `RequireAuth.test.jsx` | 3 | Protected pages and the return to the original page |
+| `LoginPage.test.jsx` | 6 | Redirects, per-field errors, the submitting state |
+| `usePantry.test.js` | 12 | Optimistic updates, rollback, the `404` rules, requests in flight |
+| `RecipePage.test.jsx` | 10 | Display, marks, errors, retry, no injected markup |
+| `AccountPage.test.jsx` / `SiteHeader.test.jsx` / `NotFoundPage.test.jsx` | 2 / 4 / 1 | Page contents and navigation |
+
+The server tests pin which fields the API sends; the client tests pin how they are
+read. A field renamed on one side only is caught by the side that still pins the old
+name, so change both together.
+
 ### Manual testing
 
 For exploring the API by hand, import `postman/pantry-api.postman_collection.json`
@@ -600,8 +630,8 @@ Two jobs run in parallel, each on a fresh Linux machine:
 
 | Job | What it does |
 |---|---|
-| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 133 tests |
-| **Client lint and build** | Installs from the lockfile, runs oxlint, and builds the production bundle |
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 135 tests |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 67 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
@@ -617,6 +647,7 @@ ignores case; Linux does not).
 1. Make changes on a branch, push it, and open a pull request.
 2. Wait for both checks to pass.
 3. Merge into `main`. Render then deploys the commit, but only if its checks passed.
+4. Keep **Server tests** and **Client lint and build** as required checks for `main`, so a failing check blocks the merge.
 
 In your GitHub repository settings, require both checks before merging into `main`
 (if your plan supports it for private repositories).
@@ -762,6 +793,10 @@ check each provider's current terms.
 | `Refusing to run tests: database "..." does not end with "_test"` | You ran the tests without `.env.test`. Use `npm test`. |
 | `bad option: --env-file` | Node is older than 20.10. Update it. |
 | PowerShell says `Supply values for the following parameters` after `curl` | `curl` is an alias for `Invoke-WebRequest`. Use `curl.exe`, or Postman. |
+| `npm error Missing script: "test"` | You are in the wrong folder, or on a branch without the test setup. Run it in `client/` or `server/`. |
+| `vitest: not found` in CI | The lockfile doesn't include the test packages. Run `npm install` in `client/` and commit `package-lock.json`. |
+| A client test passes locally but fails in CI | A hardcoded date or locale, or a filename casing mismatch (Linux is case-sensitive). |
+
 
 ---
 
@@ -777,18 +812,18 @@ check each provider's current terms.
 | 6 | Quality and hardening: automated tests, security headers, CORS, rate limiting, schema validation | Done |
 | 7 | Frontend: React app, ingredient picker, results, recipe detail, accounts, saved pantry | Done |
 | 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
+| 9 | Frontend tests: Vitest, React Testing Library, tests in CI | Done |
 
-Ideas for what could come next: automated tests for the web app (Vitest and React
-Testing Library), an error-tracking service, a database migration tool, a staging
-environment, cookie-based sessions with refresh tokens, bulk pantry operations,
-and an accessibility audit.
+Ideas for what could come next: a database migration tool, an error-tracking
+service, a staging environment, cookie-based sessions with refresh tokens, tests for
+the remaining screens, end-to-end tests, bulk pantry operations, and an
+accessibility audit.
 
 ## Known limitations
 
 - On the free hosting plans, the API and the database both sleep when idle, so the
   first request after a quiet period is slow.
-- No automated tests for the web app, and no staging environment: a commit that
-  passes CI deploys to production.
+- No staging environment: a commit that passes CI deploys to production. The web app tests cover the data layer, the session, the pantry, and a few pages, but not every screen, and nothing runs the real client against the real API.
 - No error-tracking service, metrics, or dashboards: monitoring is an uptime ping
   with email alerts, plus searchable logs on the hosting platform.
 - No migration tool: `schema.sql` creates missing tables safely but cannot alter
