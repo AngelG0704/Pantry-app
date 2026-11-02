@@ -9,7 +9,7 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Status:** the full stack app (API, database, accounts, saved pantry, recipe
 matching, and a React web app) is complete, tested, hardened, and deployable
-through **v1.1.0**, with automated CI/CD and structured logging. See the
+through **v1.1.5**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -27,7 +27,8 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen
-- **A tested, hardened stack:** 135 server tests and 67 web app tests, rate
+- **A tested, hardened stack:** 135 server tests and 204 web app tests, rate
+  limiting, a CORS allowlist, security headers, and schema-validated input
   limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
@@ -513,7 +514,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 ## Testing
 
 The server has **135 automated tests** and runs against a separate database, so it
-never touches your development data. The web app has **67 tests** that run without
+never touches your development data. The web app has **204 tests** that run without
 a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
@@ -595,19 +596,24 @@ user does: by role, label, and visible text. They never call a real API: `fetch`
 replaced in the `api.js` tests, and `api.js` or `useAuth` is replaced in the rest.
 Before each test the page is emptied and mocks are reset.
 
-| File | Tests | What it guards |
+| Area | Files (tests) | What it guards |
 |---|---|---|
-| `api.test.js` | 18 | Request building, `ApiError`, network and abort handling, the unauthorized handler |
-| `AuthProvider.test.jsx` | 11 | The session states, login, register, logout, token storage |
-| `RequireAuth.test.jsx` | 3 | Protected pages and the return to the original page |
-| `LoginPage.test.jsx` | 6 | Redirects, per-field errors, the submitting state |
-| `usePantry.test.js` | 12 | Optimistic updates, rollback, the `404` rules, requests in flight |
-| `RecipePage.test.jsx` | 10 | Display, marks, errors, retry, no injected markup |
-| `AccountPage.test.jsx` / `SiteHeader.test.jsx` / `NotFoundPage.test.jsx` | 2 / 4 / 1 | Page contents and navigation |
+| API layer | `api.test.js` (18) | Request building, `ApiError`, network and abort handling, the unauthorized handler |
+| Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
+| Auth pages | `LoginPage.test.jsx` (6), `RegisterPage.test.jsx` (11), `AccountPage.test.jsx` (2) | Redirects, per-field errors, the submitting state, the creation date |
+| Search | `HomePage.test.jsx` (18), `useSearchState.test.js` (9), `useRecipeMatches.test.js` (8), `useIngredients.test.js` (6) | Picking, the 50-ingredient limit, searching, aborted requests, error and retry |
+| Pantry | `PantryPage.test.jsx` (16), `usePantry.test.js` (12), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users |
+| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
+| Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
 
 The server tests pin which fields the API sends; the client tests pin how they are
 read. A field renamed on one side only is caught by the side that still pins the old
 name, so change both together.
+
+Tests sit next to the code they test, so a file such as `HomePage.jsx` has
+`HomePage.test.jsx` beside it. Pages and hooks are tested twice where it matters: once
+with hand-built input, and once together with the real hooks.
+
 
 ### Manual testing
 
@@ -631,7 +637,7 @@ Two jobs run in parallel, each on a fresh Linux machine:
 | Job | What it does |
 |---|---|
 | **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 135 tests |
-| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 67 web app tests, and builds the production bundle |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 204 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
@@ -812,19 +818,21 @@ check each provider's current terms.
 | 6 | Quality and hardening: automated tests, security headers, CORS, rate limiting, schema validation | Done |
 | 7 | Frontend: React app, ingredient picker, results, recipe detail, accounts, saved pantry | Done |
 | 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
-| 9 | Frontend tests: Vitest, React Testing Library, tests in CI | Done |
+| 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 
 Ideas for what could come next: a database migration tool, an error-tracking
-service, a staging environment, cookie-based sessions with refresh tokens, tests for
-the remaining screens, end-to-end tests, bulk pantry operations, and an
-accessibility audit.
+service, a staging environment, cookie-based sessions with refresh tokens, end-to-end
+tests, bulk pantry operations, and an accessibility audit
 
 ## Known limitations
 
 - On the free hosting plans, the API and the database both sleep when idle, so the
   first request after a quiet period is slow.
-- No staging environment: a commit that passes CI deploys to production. The web app tests cover the data layer, the session, the pantry, and a few pages, but not every screen, and nothing runs the real client against the real API.
-- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping
+- No staging environment: a commit that passes CI deploys to production.
+- The web app has unit and integration tests for every screen, hook, and component,
+  but no test renders the whole `App`, and nothing runs the real client against the
+  real API, so a field renamed on one side only is caught only if both sides' tests
+  pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping
   with email alerts, plus searchable logs on the hosting platform.
 - No migration tool: `schema.sql` creates missing tables safely but cannot alter
   existing ones, so a column change needs manual SQL. No backup or restore
