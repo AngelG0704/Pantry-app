@@ -3,6 +3,122 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-02-2026
+### Version 1.1.5: Tests for the remaining screens, hooks, and components
+
+Every module in the web app now has automated tests except the two entry files
+(`main.jsx` and `App.jsx`). The suite grew from 67 to 204 tests in 25 files. No
+application code changed; the CI job from 1.1.0 runs the new tests with no
+configuration change.
+
+### Added
+
+- **137 new client tests in 16 files**, in three groups:
+  - **Small modules and components (39):**
+    - `auth/formErrors.test.js` (4), `auth/tokenStorage.test.js` (5)
+    - `components/FormField.test.jsx` (4), `components/MaxMissingSelect.test.jsx` (3)
+    - `components/SelectedIngredients.test.jsx` (6), `components/IngredientPicker.test.jsx` (9)
+    - `components/RecipeResults.test.jsx` (8)
+  - **Pages (45):**
+    - `pages/HomePage.test.jsx` (18): the page with a hand-built `search` object, and the page with the real search hook.
+    - `pages/PantryPage.test.jsx` (16)
+    - `pages/RegisterPage.test.jsx` (11)
+  - **Hooks (53):**
+    - `hooks/useIngredients.test.js` (6), `hooks/useRecipeMatches.test.js` (8)
+    - `hooks/useMyMatches.test.js` (11), `hooks/useSearchState.test.js` (9)
+    - `hooks/usePantryNames.test.js` (8), `hooks/useRecipe.test.js` (11)
+- No new dependencies and no configuration changes.
+
+### Behavior
+
+- **Nothing the user sees has changed.** This version only adds tests.
+- **Still no network:** `api.js` is replaced in the page and hook tests, `useAuth` in
+  the form and header tests, and `Storage` methods are spied on in the token tests.
+- **Every area of the web app is covered.** The exceptions are `main.jsx` and
+  `App.jsx`, which only start the app and wire the routes.
+- **CI runs all 204 tests** in the existing `Test` step. A failing test still stops
+  the build and the deploy.
+
+### Validation (what the new tests pin down)
+
+| Input | Rule |
+|---|---|
+| Several server messages for one field | Only the first is shown beside the field |
+| Server error with no field details | Shown once as a general alert |
+| Storage that is blocked or full | Token reads return `null`; writes and clears never throw |
+| Ingredient search text | Matches ignoring case and surrounding spaces; no match shows a message and no list |
+| 50 ingredients selected | New picks are disabled; selected ones can still be unticked |
+| "None" in the missing-ingredients menu | Reported as the string `"0"`; "Any number" is reported as `""` |
+| No ingredient selected, or a search running | "Find recipes" is disabled |
+| Empty registration form | Still submitted; the server is the only validator |
+| Switching between register and login | The page to return to is kept |
+| A new search while one is running | The old request is aborted and its result ignored |
+| A pantry change confirmed by the server | The recipe matches refresh |
+| A pantry change that fails and rolls back | The recipe matches do not refresh |
+| Match refresh in progress | The old recipes stay visible, with no loading flash; a failed refresh keeps them next to the error |
+| Pantry names for the recipe marks | Never shown to a different token; `null` after logout |
+| Chips for selected ingredients | Always in catalog order, whatever order they were picked or saved |
+| Recipe results | Shown in the order the server sent them |
+| Cancelled request (`AbortError`) | Ignored: no error and no state change |
+
+### Implementation notes
+
+- **Two layers for pages that take a prop.** `HomePage` is tested with a hand-built
+  `search` object (fast; can create states that are hard to click into) and again
+  inside a small harness that runs the real `useSearchState` (proves the wiring).
+  Each layer catches bugs the other cannot.
+- **A refresh is observable as a call.** The pantry tests prove that matches refresh
+  after a change by counting calls to `getMyMatches`, since the refresh has no other
+  visible effect.
+- **Hooks are tested with `renderHook`,** reading `result.current` after each
+  `act`. Re-rendering with new inputs (`rerender`) tests dependency arrays, such as
+  the pantry `version` that triggers a match refresh.
+- **Every test file resets mocks** with `vi.resetAllMocks()` in `beforeEach`, and the
+  token tests restore their spies after each test.
+- **The tests were checked by breaking the code.** Each rule above was verified by
+  changing the real source (removing a guard, a dependency, or a cleanup) and
+  confirming that exactly the expected test failed.
+- jsdom does not navigate, so a missing `event.preventDefault()` on a form submit
+  cannot be caught by these tests; only a real browser would show it.
+- To upgrade from 1.1.0: run `npm test` in `client/`; nothing needs installing.
+
+### Example
+
+```powershell
+cd client
+npm test
+```
+
+```
+ Test Files  25 passed (25)
+      Tests  204 passed (204)
+```
+
+### Files changed
+
+- `client/src/auth/`: `formErrors.test.js`, `tokenStorage.test.js` (new)
+- `client/src/components/`: `FormField.test.jsx`, `MaxMissingSelect.test.jsx`,
+  `SelectedIngredients.test.jsx`, `IngredientPicker.test.jsx`,
+  `RecipeResults.test.jsx` (new)
+- `client/src/pages/`: `HomePage.test.jsx`, `PantryPage.test.jsx`,
+  `RegisterPage.test.jsx` (new)
+- `client/src/hooks/`: `useIngredients.test.js`, `useRecipeMatches.test.js`,
+  `useMyMatches.test.js`, `useSearchState.test.js`, `usePantryNames.test.js`,
+  `useRecipe.test.js` (new)
+- `README.md`, `CHANGELOG.md`
+
+### Known limitations
+
+- No test renders the whole `App`, so the route table (which paths are protected,
+  and the not-found fallback) is checked only through its pieces.
+- No end-to-end tests: nothing runs the real client against the real API, so a
+  mismatch between the two halves is caught only if both sides' tests pin the same
+  field names.
+- No coverage report for the web app, and no real-browser tests (layout, form
+  navigation, focus).
+- Accessibility is covered only through the role and label queries the tests use,
+  not by an audit.
+
 ## 11-01-2026
 ### Version 1.1.0: Frontend tests
 
