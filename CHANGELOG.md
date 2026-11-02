@@ -123,7 +123,7 @@ npm test
   field names.
 - No client coverage report and no browser-level tests (real browser, real layout).
 - No accessibility audit beyond the role and label queries the tests use.
-## DATE-I-MERGED
+DATE-I-MERGED
 ### Version 1.0.1: Fixes found while verifying the deployment
 
 Checking the first deployment turned up bugs that the 133 server tests could not
