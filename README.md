@@ -9,7 +9,7 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Status:** the full stack app (API, database, accounts, saved pantry, recipe
 matching, and a React web app) is complete, tested, hardened, and deployable
-through **v1.1.5**, with automated CI/CD and structured logging. See the
+through **v1.2.0**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -25,11 +25,9 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Accounts:** register and log in with email and password
 - **A personal pantry** that persists between sessions and is private to each user
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
-- **A web app** (React) with an ingredient picker, ranked results, recipe details,
+- **A web app** (React) with an ingredient picker, ranked results, recipe details, in a warm theme with full light and dark modes.
   and a pantry screen
-- **A tested, hardened stack:** 135 server tests and 204 web app tests, rate
-  limiting, a CORS allowlist, security headers, and schema-validated input
-  limiting, a CORS allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 135 server tests and 204 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -347,18 +345,13 @@ address from `client/.env.development` (`VITE_API_URL`, default
 
 How it's built:
 
-- **One API module.** `src/api.js` is the only code that calls `fetch`. It adds the
-  token, turns failures into one error type, and reports rejected tokens.
-- **Hooks hold the logic, components draw the screen.** Each piece of server data
-  has a hook (loading, error, and success state, with cancellation of stale
-  requests), and pages stay small.
-- **Where state lives.** The home-page selection lives in `App`, so it survives
-  moving between screens (but not a reload). Per-user data such as the pantry lives
-  inside protected pages, so nothing user-specific survives logout.
-- **Optimistic pantry updates.** Ticking an ingredient updates the screen
-  immediately and is undone with an error message if the request fails.
-- **Text, never HTML.** React inserts recipe text as text, so stored content cannot
-  inject markup.
+- **One API module.** `src/api.js` is the only code that calls `fetch`. It adds the token, turns failures into one error type, and reports rejected tokens.
+- **Hooks hold the logic, components draw the screen.** Each piece of server data has a hook (loading, error, and success state, with cancellation of stale requests), and pages stay small.
+- **Where state lives.** The home-page selection lives in `App`, so it survives moving between screens (but not a reload). Per-user data such as the pantry lives inside protected pages, so nothing user-specific survives logout.
+- **Optimistic pantry updates.** Ticking an ingredient updates the screen immediately and is undone with an error message if the request fails.
+- **Text, never HTML.** React inserts recipe text as text, so stored content cannot inject markup.
+- **One stylesheet with design tokens.** `src/index.css` defines colors, spacing, and type once on `:root`; `light-dark()` gives each color a light and a dark value, so the theme follows the device setting. Terracotta marks actions and sage marks "you have this". No CSS framework and no third-party fonts.
+
 
 ### Sessions in the browser
 
@@ -819,36 +812,23 @@ check each provider's current terms.
 | 7 | Frontend: React app, ingredient picker, results, recipe detail, accounts, saved pantry | Done |
 | 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
+| V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: a database migration tool, an error-tracking
-service, a staging environment, cookie-based sessions with refresh tokens, end-to-end
-tests, bulk pantry operations, and an accessibility audit
+Ideas for what could come next: a database migration tool, an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit
 
 ## Known limitations
 
-- On the free hosting plans, the API and the database both sleep when idle, so the
-  first request after a quiet period is slow.
+- On the free hosting plans, the API and the database both sleep when idle, so the first request after a quiet period is slow.
 - No staging environment: a commit that passes CI deploys to production.
-- The web app has unit and integration tests for every screen, hook, and component,
-  but no test renders the whole `App`, and nothing runs the real client against the
-  real API, so a field renamed on one side only is caught only if both sides' tests
-  pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping
-  with email alerts, plus searchable logs on the hosting platform.
-- No migration tool: `schema.sql` creates missing tables safely but cannot alter
-  existing ones, so a column change needs manual SQL. No backup or restore
-  procedure is documented for the hosted database.
-- The token is stored in `localStorage`, where any script on the page could read
-  it. Tokens cannot be revoked before they expire, and there is no refresh token,
-  password reset, or email verification.
-- Rate-limit counters are in memory: they reset on restart and aren't shared
-  between multiple server instances. Limits are per IP, so users sharing an
-  address share a budget, and there is no per-account lockout.
+- The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
+- No migration tool: `schema.sql` creates missing tables safely but cannot alter existing ones, so a column change needs manual SQL. No backup or restore procedure is documented for the hosted database.
+- The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
+- Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records only presence, with no quantities or expiry dates, and has no
-  bulk operations.
+- The pantry records only presence, with no quantities or expiry dates, and has no bulk operations.
 - Ingredient names are matched exactly, with no synonyms.
-- Accessibility covers the basics (labels, roles, keyboard-operable controls) but
-  has not been audited.
+- Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
+- No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has()`, which need a current browser.
 - The site runs on the hosting platform's domain, not a custom one.
 
 ## Changelog
