@@ -440,12 +440,154 @@ progress::-moz-progress-bar {
 [role="alert"] button {
   margin-top: var(--space-3);
 }
-.recipe-ingredients {
-  padding-left: 1.25rem;
+
+/* ===== Recipe detail (V6) ===== */
+.back-link {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
 }
 
+.back-link a,
+.back-link a:visited {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+
+.back-link a:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.recipe h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+}
+
+.recipe-meta {
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
+}
+
+.recipe h3 {
+  margin: var(--space-6) 0 var(--space-2);
+  font-size: var(--text-lg);
+}
+
+/* Ingredients: one row per item inside a card */
+.recipe-ingredients {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.recipe-ingredients li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recipe-ingredients li:last-child {
+  border-bottom: none;
+}
+
+.recipe-ingredients .mark {
+  font-size: var(--text-sm);
+}
+
+.recipe-ingredients .have {
+  font-weight: 600;
+}
+
+.recipe-ingredients .have .mark {
+  color: var(--color-secondary);    /* sage = you have this */
+}
+
+.recipe-ingredients .need .mark {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+/* Keep this class name: RecipePage.test.jsx queries .instructions */
 .instructions {
-  white-space: pre-line;
+  white-space: pre-line;            /* keep the line breaks from the data */
+  margin: 0;
+  max-width: 65ch;                  /* comfortable reading line length */
+  line-height: 1.7;
+}
+
+/* ===== Account page (V6) ===== */
+/* Narrow screens: label above value. Wider: two columns. */
+.account-details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1) var(--space-6);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.account-details dt {
+  color: var(--color-muted);
+}
+
+.account-details dd {
+  margin: 0;                        /* removes the browser's 40px indent */
+  font-weight: 600;
+  overflow-wrap: anywhere;          /* long emails wrap instead of overflowing */
+}
+
+.account-details dd + dt {
+  margin-top: var(--space-3);       /* space between label/value pairs */
+}
+
+@media (min-width: 30rem) {
+  .account-details {
+    grid-template-columns: max-content 1fr;
+    row-gap: var(--space-3);
+  }
+
+  .account-details dd + dt {
+    margin-top: 0;
+  }
+}
+
+/* ===== Not found page (V6) ===== */
+.not-found {
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+.not-found h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+}
+
+.not-found p {
+  color: var(--color-muted);
+}
+
+.not-found a,
+.not-found a:visited {
+  display: inline-block;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.not-found a:hover {
+  background: var(--color-primary-hover);
 }
 
 .field {

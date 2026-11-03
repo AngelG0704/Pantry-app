@@ -6,7 +6,7 @@ function AccountPage() {
   return (
     <section>
       <h2>Your account</h2>
-      <dl>
+      <dl className="account-details">
         <dt>Email</dt>
         <dd>{user.email}</dd>
         <dt>Member since</dt>
