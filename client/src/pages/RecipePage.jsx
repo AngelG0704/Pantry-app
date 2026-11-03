@@ -34,25 +34,35 @@ function RecipeDetail({ id, selectedNames }) {
   const showMarks = selectedNames.size > 0;
 
   return (
-    <article>
-      <p>
+    <article className='recipe'>
+      <p className='back-link'>
         <Link to="/">← Back to your ingredients</Link>
       </p>
 
       <h2>{data.title}</h2>
-      {data.prepMinutes != null && <p>{data.prepMinutes} minutes</p>}
+      {data.prepMinutes != null && (
+        <p className='recipe-meta'>{data.prepMinutes} minutes</p>
+      )}
 
       <h3>Ingredients</h3>
       <ul className="recipe-ingredients">
-        {data.ingredients.map((name) => (
-          <li key={name}>
-            {name}
-            {showMarks &&
-              (selectedNames.has(name)
-                ? ' ✓ you have this'
-                : ' — you need this')}
-          </li>
-        ))}
+        {data.ingredients.map((name) => {
+          const have = selectedNames.has(name);
+
+          return (
+            <li
+              key={name}
+              className={showMarks ? (have ? 'have' : 'need') : undefined}
+            >
+              {name}
+              {showMarks && (
+                <span className="mark">
+                  {have ? ' ✓ you have this' : ' — you need this'}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       <h3>Instructions</h3>
