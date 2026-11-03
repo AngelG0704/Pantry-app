@@ -28,7 +28,7 @@ function HomePage({ search }) {
     <>
       <p>Pick what you have, and see what you can cook.</p>
 
-      {catalog.status === 'loading' && <p>Loading ingredients…</p>}
+      {catalog.status === 'loading' && <p className='status'>Loading ingredients…</p>}
 
       {catalog.status === 'error' && (
         <div role="alert">

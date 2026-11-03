@@ -7,7 +7,7 @@ function RecipeDetail({ id, selectedNames }) {
   const recipe = useRecipe(id);
 
   if (recipe.status === 'loading') {
-    return <p>Loading recipe…</p>;
+    return <p className='status'>Loading recipe…</p>;
   }
 
   if (recipe.status === 'error') {

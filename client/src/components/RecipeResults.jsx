@@ -6,7 +6,7 @@ function RecipeCard({ recipe }) {
   const summary = `${matchedCount} of ${totalCount} ingredients`;
 
   return (
-    <li className="card">
+    <li className={canMakeNow ? 'card card-ready' : 'card'}>
       <h3>
         <Link to={`/recipes/${recipe.id}`}>{title}</Link>  
       </h3>
@@ -35,7 +35,7 @@ function RecipeResults({ status, data, error }) {
     <section aria-labelledby="results-heading" aria-live="polite">
       <h2 id="results-heading">Recipes you can make</h2>
 
-      {status === 'loading' && <p>Finding recipes…</p>}
+      {status === 'loading' && <p className="status">Finding recipes…</p>}
 
       {status === 'error' && (
         <p role="alert">Could not find recipes: {error}</p>
@@ -43,7 +43,7 @@ function RecipeResults({ status, data, error }) {
 
       {status === 'success' &&
         (data.length === 0 ? (
-          <p>No recipes match those ingredients yet. Try adding more.</p>
+          <p className="status">No recipes match those ingredients yet. Try adding more.</p>
         ) : (
           <ul className="results">
             {data.map((recipe) => (
