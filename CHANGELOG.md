@@ -3,6 +3,110 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+
+## 11-03-2026
+### Version 1.2.0: Visual refresh
+ 
+The web app has a new look: a warm "kitchen" theme with real light and dark modes,
+a consistent layout, and clear hover, pressed, focus, and disabled states. The work
+was done in eight small parts (V0 to V7), one pull request each. Screens, routes,
+wording, behavior, data, and API calls are unchanged, and all 204 tests pass with
+no test file edited.
+ 
+### Added
+ 
+- **Design tokens** on `:root` in `client/src/index.css`: colors, spacing, radius,
+  shadow, font stack, type scale, and content width. Every color is written once with
+  `light-dark()`, so a single rule serves both themes.
+- **Two accent colors with a fixed meaning:** terracotta for actions (buttons, links,
+  partial matches) and sage for "you have this" (ticked ingredients, chips, full
+  matches, recipe marks).
+- **Interaction states** for every control: hover, pressed, disabled, and a visible
+  keyboard focus ring (`:focus-visible`).
+- **Current-page highlight** in the header, using `NavLink` and its
+  `aria-current="page"` attribute.
+- **`index.html`:** a real `<title>`, a description, `color-scheme`, and
+  `theme-color` for light and dark. The favicon `type` now matches the PNG file.
+- No new dependencies, no new fonts, and no third-party requests.
+### Behavior
+ 
+- **Nothing works differently.** The same screens, text, and requests; only the look
+  changed.
+- **Dark mode now covers the whole page.** Before, `color-scheme` was set on `body`,
+  so only form controls turned dark while the page stayed white.
+- **Content is aligned with the header** in one centered column (40rem).
+- **The header fits on phones:** items never break mid-word, the nav wraps under the
+  brand, and a long email is shortened with "…".
+- **Full and partial matches look different:** sage edge and bar for "You can make
+  this now", terracotta for "You still need…".
+- **Every error (`role="alert"`) uses one style:** a tinted box with a red edge.
+  Loading and empty messages are muted.
+- **Larger touch targets:** ingredient rows are 44px tall and fully clickable.
+### Contrast (checked against WCAG AA)
+ 
+| Pair | Light | Dark | Needed |
+|---|---|---|---|
+| Body text on page | 14.3 | 14.1 | 4.5 |
+| Muted text on page | 5.9 | 7.2 | 4.5 |
+| Links on page | 5.2 | 7.0 | 4.5 |
+| Button text on terracotta | 5.6 | 7.0 | 4.5 |
+| Sage text on cards | 6.0 | 8.1 | 4.5 |
+| Error text in the error box | 6.3 | 6.0 | 4.5 |
+| Input and button edges | 3.1 | 3.9 | 3.0 |
+| Focus ring on page | 5.2 | 7.0 | 3.0 |
+ 
+### Implementation notes
+ 
+- **Class names only, never wording.** JSX changes are `className` values, `NavLink`
+  in place of `Link` in the header nav, and one `<span>` around the recipe marks.
+  The marks tests read `textContent`, which includes text inside the span, so they
+  pass unchanged.
+- **The `instructions` class name is kept** on purpose: `RecipePage.test.jsx` checks
+  `.instructions b` and `.instructions img`, and a rename would make those checks
+  pass without testing anything.
+- **Selectors follow meaning already in the markup:** `button[type="submit"]` for
+  primary buttons, `[aria-invalid="true"]` for field errors, `[role="alert"]` for
+  error boxes, `label[for]` for field labels, and `label:has(input:checked)` for
+  ticked rows.
+- **Order matters on ties:** `.chips button` comes after the global `button` rules,
+  so the chip × buttons keep their own look.
+- **Progress bars** use `::-webkit-progress-*` and `::-moz-progress-bar` in separate
+  rules, because one unknown pseudo-element would cancel a combined rule.
+- **No motion was added,** so there is nothing for `prefers-reduced-motion` to turn
+  off.
+- Tests cannot see layout or color. Each part was checked by eye in light, dark, and
+  at 360px, 768px, and wide screens, with before and after screenshots.
+- To upgrade from 1.1.5: nothing to install. Pull and rebuild the web app.
+### Example
+ 
+```powershell
+cd client
+npm test
+```
+ 
+```
+ Test Files  25 passed (25)
+      Tests  204 passed (204)
+```
+ 
+### Files changed
+ 
+- `client/src/index.css` (rewritten section by section)
+- `client/index.html`
+- `client/src/components/SiteHeader.jsx`, `RecipeResults.jsx`, `RequireAuth.jsx`
+- `client/src/pages/HomePage.jsx`, `PantryPage.jsx`, `RecipePage.jsx`,
+  `AccountPage.jsx`, `NotFoundPage.jsx`
+- `client/.env.development` (local API address back to `http://localhost:3000`)
+- `README.md`, `CHANGELOG.md`
+### Known limitations
+ 
+- No visual regression tests: a CSS change that breaks the look still passes CI.
+- Uses `light-dark()` and `:has()`, which need a current browser (2024 or later).
+  Older browsers get a plain but usable page.
+- No automated accessibility audit; contrast was checked by hand for the pairs above.
+- The favicon is still a 16px PNG; there is no larger icon for phone home screens.
+
+
 ## 11-02-2026
 ### Version 1.1.5: Tests for the remaining screens, hooks, and components
 
