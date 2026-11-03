@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, NavLink, useNavigate } from 'react-router';
 import { useAuth } from '../auth/useAuth.js';
 
 function SiteHeader() {
@@ -19,8 +19,10 @@ function SiteHeader() {
       <nav aria-label="Account">
         {status === 'authenticated' && (
           <>
-                      <Link to="/pantry">My pantry</Link>
-            <Link to="/account">{user.email}</Link>
+            <NavLink to="/pantry">My pantry</NavLink>
+            <NavLink to="/account" className="site-header-email" >
+            {user.email}
+            </NavLink>
             <button type="button" onClick={handleLogout}>
               Log out
             </button>
@@ -29,8 +31,8 @@ function SiteHeader() {
 
         {status === 'anonymous' && (
           <>
-            <Link to="/login">Log in</Link>
-            <Link to="/register">Register</Link>
+            <NavLink to="/login">Log in</NavLink>
+            <NavLink to="/register">Register</NavLink>
           </>
         )}
       </nav>

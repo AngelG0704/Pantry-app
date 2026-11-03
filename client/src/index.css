@@ -63,6 +63,71 @@ a:visited {
   color: var(--color-primary);
 }
 
+/* ===== Site header (V2) ===== */
+.site-header {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;              /* nav drops below the brand when space runs out */
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  white-space: nowrap;          /* never "Pantry / App" */
+}
+
+.site-header h1 a,
+.site-header h1 a:visited {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.site-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  min-width: 0;                 /* lets the email shrink instead of overflowing */
+}
+
+.site-header nav a,
+.site-header nav a:visited {
+  display: inline-block;
+  padding: var(--space-1) 0;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;          /* never "My / pantry" */
+  border-bottom: 2px solid transparent;
+}
+
+.site-header nav a:hover {
+  border-bottom-color: var(--color-border);
+}
+
+/* The page you're on. NavLink adds aria-current="page" automatically. */
+.site-header nav a[aria-current="page"] {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.site-header .site-header-email {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;      /* long emails end in "…" */
+  color: var(--color-muted);
+}
+
+.site-header button {
+  font: inherit;
+  white-space: nowrap;          /* never "Log / out" */
+}
+
 .ingredient-list {
   list-style: none;
   padding: 0;
@@ -134,24 +199,8 @@ progress {
   width: 100%;
 }
 
-.site-header {
-  max-width: 40rem;
-  margin: 1.5rem auto 0;
-  padding: 0 1rem;
-}
-
-.site-header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-}
-
-.site-header a,
 .card h3 a {
   color: inherit;
-}
-
-.site-header a {
-  text-decoration: none;
 }
 
 .recipe-ingredients {
@@ -160,19 +209,6 @@ progress {
 
 .instructions {
   white-space: pre-line;
-}
-
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.site-header nav {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 .field {
