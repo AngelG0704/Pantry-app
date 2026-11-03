@@ -26,7 +26,7 @@ function PantryPage({ search }) {
     <>
       <h2>My pantry</h2>
 
-      {loading && <p>Loading your pantry…</p>}
+      {loading && <p className='status'>Loading your pantry…</p>}
 
       {catalog.status === 'error' && (
         <div role="alert">

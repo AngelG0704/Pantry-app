@@ -6,7 +6,7 @@ function RequireAuth({ children }) {
   const location = useLocation();
 
   if (status === 'checking') {
-    return <p>Checking your session…</p>;
+    return <p className='status' >Checking your session…</p>;
   }
 
   if (status === 'anonymous') {
