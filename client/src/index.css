@@ -6,7 +6,9 @@
   --color-text:       light-dark(#2b241e, #efe7dc);
   --color-muted:      light-dark(#6b5e52, #b3a594);
   --color-border:     light-dark(#e3d9cb, #3d352d);
+  --color-border-strong: light-dark(#9c8c78, #857565); /* control edges, 3:1 */
   --color-primary:    light-dark(#b0472a, #ee8b6a); /* terracotta */
+  --color-primary-hover: light-dark(#933a22, #f4a487); /* deeper in light, brighter in dark */
   --color-on-primary: light-dark(#ffffff, #1e1a16); /* text on terracotta */
   --color-secondary:  light-dark(#4d6b3c, #a3c48a); /* sage */
   --color-danger:     light-dark(#b00020, #ff8a80);
@@ -128,6 +130,105 @@ a:visited {
   white-space: nowrap;          /* never "Log / out" */
 }
 
+/* ===== Controls (V3) ===== */
+
+/* Keyboard focus: one ring for every focusable thing. Never remove it. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Labels that point at a control (for="…") sit on their own line. */
+label[for] {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+}
+
+/* Text-like inputs and selects */
+input:not([type="checkbox"]):not([type="radio"]),
+select {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+input[type="search"] {
+  width: 100%;
+  max-width: 20rem;
+}
+
+input::placeholder {
+  color: var(--color-muted);
+}
+
+/* Fields with a validation error get a red edge.
+   FormField already sets aria-invalid="true" when there's an error. */
+.field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+/* Checkboxes pick up the accent color. */
+input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Buttons: secondary (outlined) by default */
+button {
+  font: inherit;
+  cursor: pointer;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  line-height: 1.2;
+}
+
+button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+button:active {
+  background: var(--color-bg);
+}
+
+/* Primary: the main action of a form ("Find recipes", "Log in", "Create account") */
+button[type="submit"] {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+
+button[type="submit"]:hover {
+  color: var(--color-on-primary);
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+button:disabled,
+button:disabled:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+button[type="submit"]:disabled,
+button[type="submit"]:disabled:hover {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
 .ingredient-list {
   list-style: none;
   padding: 0;
@@ -172,9 +273,9 @@ a:visited {
 }
 
 form {
-  margin: 1rem 0;
+  margin: var(--space-4) 0;
   display: grid;
-  gap: 0.5rem;
+  gap: var(--space-3);
   justify-items: start;
 }
 
@@ -219,11 +320,10 @@ progress {
 .field input {
   width: 100%;
   max-width: 20rem;
-  font: inherit;
-  padding: 0.35rem 0.5rem;
 }
 
 .field-error {
    margin: 0;
+   font-size: var(--text-sm);
    color: var(--color-danger);
 }
