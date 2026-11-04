@@ -34,6 +34,16 @@ describe('pantry', () => {
   const listPantry = (session) =>
     api.get('/api/pantry').set(bearer(session.token));
 
+  const setExpiry = (session, ingredientId, body) =>
+    api
+      .patch(`/api/pantry/${ingredientId}`)
+      .set(bearer(session.token))
+      .send(body);
+
+  const expiryOf = async (session, ingredientId) =>
+    (await listPantry(session)).body.find((item) => item.id === ingredientId)
+      ?.expiresOn;
+
   const names = (res) => res.body.map((item) => item.name);
 
   describe('authentication', () => {
@@ -42,6 +52,8 @@ describe('pantry', () => {
       ['POST', '/api/pantry'],
       ['DELETE', '/api/pantry/1'],
       ['GET', '/api/pantry/matches'],
+      ['DELETE', '/api/pantry/1'],
+      ['PATCH','/api/pantry/1'],
     ];
 
     for (const [method, path] of protectedRoutes) {
@@ -69,8 +81,8 @@ describe('pantry', () => {
 
       assert.equal(res.status, 200);
       assert.deepEqual(res.body, [
-        { id: ids.butter, name: 'butter' },
-        { id: ids.egg, name: 'egg' },
+        { id: ids.butter, name: 'butter', expiresOn: null },
+        { id: ids.egg, name: 'egg', expiresOn: null },
       ]);
     });
   });
@@ -180,6 +192,117 @@ describe('pantry', () => {
     });
   });
 
+  describe('PATCH /api/pantry/:ingredientId', () => {
+    it('sets a date, returns the updated item, and the list shows it', async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { id: ids.egg, name: 'egg', expiresOn: '2026-11-10' });
+      assert.equal(await expiryOf(alice, ids.egg), '2026-11-10');
+    });
+
+    it('clears the date with null', async () => {
+      await addToPantry(alice, ids.egg);
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+      const res = await setExpiry(alice, ids.egg, { expiresOn: null });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.expiresOn, null);
+      assert.equal(await expiryOf(alice, ids.egg), null);
+    });
+
+    it('replaces an existing date', async () => {
+      await addToPantry(alice, ids.egg);
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-12-01' });
+
+      assert.equal(await expiryOf(alice, ids.egg), '2026-12-01');
+    });
+
+    // Catches the node-postgres DATE -> local-midnight Date -> UTC shift.
+    for (const date of ['2026-01-01', '2024-02-29', '2026-12-31']) {
+      it(`returns ${date} exactly, with no time or day shift`, async () => {
+        await addToPantry(alice, ids.egg);
+
+        const res = await setExpiry(alice, ids.egg, { expiresOn: date });
+
+        assert.equal(res.body.expiresOn, date);
+        assert.equal(await expiryOf(alice, ids.egg), date);
+      });
+    }
+
+    it('accepts a date in the past', async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await setExpiry(alice, ids.egg, { expiresOn: '2020-05-01' });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.expiresOn, '2020-05-01');
+    });
+
+    it('changes only the item it names', async () => {
+      await addToPantry(alice, ids.egg);
+      await addToPantry(alice, ids.butter);
+
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+      assert.equal(await expiryOf(alice, ids.butter), null);
+    });
+
+    it('starts without a date after the item is removed and added again', async () => {
+      await addToPantry(alice, ids.egg);
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+      await api.delete(`/api/pantry/${ids.egg}`).set(bearer(alice.token));
+      await addToPantry(alice, ids.egg);
+
+      assert.equal(await expiryOf(alice, ids.egg), null);
+    });
+
+    it('returns 404 for an ingredient that is not in the pantry', async () => {
+      const res = await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error, 'Ingredient not in pantry');
+    });
+
+    it('returns 404 for an id too large to exist', async () => {
+      const res = await setExpiry(alice, '99999999999', { expiresOn: '2026-11-10' });
+
+      assert.equal(res.status, 404);
+    });
+
+    it('returns 400 for an id that is not a number', async () => {
+      const res = await setExpiry(alice, 'abc', { expiresOn: '2026-11-10' });
+
+      assert.equal(res.status, 400);
+    });
+
+    const invalidBodies = [
+      ['an impossible date', { expiresOn: '2026-02-30' }],
+      ['a US-style date', { expiresOn: '11/04/2026' }],
+      ['an empty string', { expiresOn: '' }],
+      ['a number', { expiresOn: 20261110 }],
+      ['a missing expiresOn', {}],
+      ['an unknown key', { expiresOn: null, quantity: 2 }],
+    ];
+
+    for (const [name, body] of invalidBodies) {
+      it(`rejects ${name} with 400 and changes nothing`, async () => {
+        await addToPantry(alice, ids.egg);
+        await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+        const res = await setExpiry(alice, ids.egg, body);
+
+        assert.equal(res.status, 400);
+        assert.equal(typeof res.body.error, 'string');
+        assert.equal(await expiryOf(alice, ids.egg), '2026-11-10');
+      });
+    }
+  });
+
   describe('ownership', () => {
     it('shows each user only their own pantry', async () => {
       await addToPantry(alice, ids.egg);
@@ -229,6 +352,26 @@ describe('pantry', () => {
       assert.equal(await countRows(), 1);
       await pool.query('DELETE FROM users WHERE id = $1', [temp.user.id]);
       assert.equal(await countRows(), 0);
+    });
+
+    it("does not let one user set the date on another user's item", async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await setExpiry(bob, ids.egg, { expiresOn: '2026-11-10' });
+
+      assert.equal(res.status, 404);
+      assert.equal(await expiryOf(alice, ids.egg), null);
+    });
+
+    it('keeps separate dates when two users have the same ingredient', async () => {
+      await addToPantry(alice, ids.egg);
+      await addToPantry(bob, ids.egg);
+
+      await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
+      await setExpiry(bob, ids.egg, { expiresOn: '2026-12-01' });
+
+      assert.equal(await expiryOf(alice, ids.egg), '2026-11-10');
+      assert.equal(await expiryOf(bob, ids.egg), '2026-12-01');
     });
   });
 
