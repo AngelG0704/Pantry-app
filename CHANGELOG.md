@@ -3,6 +3,46 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## Unreleased
+### Phase 10: Database migrations
+
+The schema is now built and changed through numbered migration files instead of a
+single `schema.sql`. Nothing has been migrated in production yet, and the deployed
+app behaves exactly as before.
+
+### Added
+
+- **Migration runner** (`server/src/db/migrator.js`): applies `.sql` files from
+  `server/src/db/migrations/` in number order and records each one in a new
+  `schema_migrations` table (version, name, sha256 checksum, time applied).
+  - Already-applied files are skipped, so it is safe to repeat.
+  - An applied file that was edited since stops the run with an error.
+  - Each migration and its ledger row share one transaction, so a failed migration
+    leaves nothing behind.
+  - A Postgres advisory lock makes two runs at the same time take turns.
+- **`001_baseline.sql`**: the previous `schema.sql`, unchanged. On a database that
+  already has the tables it only records itself.
+- **`npm run db:migrate`** (`server/src/db/migrate.js`) to run migrations by hand.
+- **`.gitattributes`**: `.sql` files use LF line endings.
+
+### Changed
+
+- `npm run db:seed` runs the migrations first, then loads the seed data in its own
+  transaction.
+- The test helper `resetDatabase()` builds the schema through the migrations, so
+  every test run, locally and in CI, exercises them.
+
+### Removed
+
+- `server/src/db/schema.sql`. Its contents live on as `001_baseline.sql`.
+
+### Known limitations
+
+- Migrations are not run on deploy yet.
+- No down (undo) migrations: a mistake is fixed with a new migration.
+- The runner itself has no automated tests. It was checked by hand on a sandbox
+  database: empty database, repeat run, database built by the old seed, edited
+  migration, broken migration, and two runs at once.
 
 ## 11-03-2026
 ### Version 1.2.0: Visual refresh

@@ -1,9 +1,8 @@
-import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import pool from '../src/db/pool.js';
+import { runMigrations } from '../src/db/migrator.js';
 import app from '../src/app.js';
-import { log } from 'node:console';
 
 const databaseName = new URL(process.env.DATABASE_URL).pathname.slice(1);
 
@@ -50,12 +49,13 @@ export const fixtures = {
 };
 
 export async function resetDatabase() {
-    const schema = await readFile(
-        new URL('../src/db/schema.sql', import.meta.url),
-        'utf8'
-    );
-    await pool.query(schema);
-
+    // Build the schema the same way production will: through the migrations.
+    const client = await pool.connect();
+    try {
+        await runMigrations(client);
+    } finally {
+        client.release();
+    }
     await pool.query(
         `TRUNCATE pantry_items, recipe_ingredients, recipes, ingredients, users
      RESTART IDENTITY CASCADE`

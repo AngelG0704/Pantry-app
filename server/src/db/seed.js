@@ -1,15 +1,25 @@
-import { readFile } from 'node:fs/promises';
 import pool from './pool.js';
+import { runMigrations } from './migrator.js';
 import { recipes } from './seedData.js';
 
 async function seed() {
     const client = await pool.connect();
 
-    try{
-        await client.query('BEGIN');
+    try {
+        // Build or update the schema first. Each migration has its own transaction,
+        // so this must finish before the seed transaction below begins.
+        const { applied } = await runMigrations(client);
+        console.log(`Migrations: ${applied.length} applied.`);
 
-        const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
-        await client.query(schema);
+        await seedData(client);
+    } finally {
+        client.release();
+    }
+}
+
+async function seedData(client) {
+    try {
+        await client.query('BEGIN');
 
         const names = [...new Set(recipes.flatMap((r) => r.ingredients))];
         for (const name of names) {
@@ -45,11 +55,9 @@ async function seed() {
         await client.query('COMMIT');
         console.log();
         console.log(`Seeded ${recipes.length} recipes and ${names.length} ingredients.`);
-        } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
-        } finally {
-        client.release();
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
     }
 }
 

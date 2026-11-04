@@ -140,11 +140,12 @@ pantry-app/
 │   │   ├── constants.js      # shared limits
 │   │   ├── controllers/      # auth, health, ingredient, pantry, recipe
 │   │   ├── db/
+│   │   │   ├── migrations/   # numbered schema changes (001_baseline.sql, ...)
+│   │   │   ├── migrator.js   # applies pending migrations and records them in schema_migrations
+│   │   │   ├── migrate.js    # the `db:migrate` command
 │   │   │   ├── pool.js       # the shared PostgreSQL connection pool
-│   │   │   ├── schema.sql    # table definitions (idempotent)
 │   │   │   ├── seedData.js   # recipes and ingredients
-│   │   │   └── seed.js       # applies the schema and data
-│   │   ├── middleware/       # requireAuth, validate, rateLimiters, requestLogger, errorHandler, notFound
+│   │   │   └── seed.js       # runs the migrations, then loads the data│   │   ├── middleware/       # requireAuth, validate, rateLimiters, requestLogger, errorHandler, notFound
 │   │   ├── routes/           # auth, health, ingredients, pantry, recipes
 │   │   ├── services/         # auth, health, token, ingredient, pantry, recipe
 │   │   └── validation/       # zod schemas
@@ -315,8 +316,8 @@ address from `client/.env.development` (`VITE_API_URL`, default
 |---|---|
 | `npm run dev` | Starts the server and restarts on code changes (`node --watch`) |
 | `npm start` | Starts the server |
-| `npm run db:seed` | Applies `schema.sql` and loads the seed data (safe to repeat) |
-| `npm test` | Runs the automated test suite against the test database |
+| `npm run db:migrate` | Applies any migrations not yet recorded in `schema_migrations` (safe to repeat) |
+| `npm run db:seed` | Runs the migrations, then loads the seed data (safe to repeat) || `npm test` | Runs the automated test suite against the test database |
 | `npm run test:coverage` | Runs the suite and prints a coverage report |
 
 **Client** (`client/`):
@@ -821,7 +822,7 @@ Ideas for what could come next: a database migration tool, an error-tracking ser
 - On the free hosting plans, the API and the database both sleep when idle, so the first request after a quiet period is slow.
 - No staging environment: a commit that passes CI deploys to production.
 - The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
-- No migration tool: `schema.sql` creates missing tables safely but cannot alter existing ones, so a column change needs manual SQL. No backup or restore procedure is documented for the hosted database.
+- Migrations run only by hand (`npm run db:migrate` or `npm run db:seed`), not on deploy, and there are no down (undo) migrations: a mistake is fixed with a new migration. No backup or restore procedure is documented for the hosted database.
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
