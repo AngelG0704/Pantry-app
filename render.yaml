@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: server
-    buildCommand: npm ci
+    buildCommand: npm ci && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /api/health/live
     autoDeployTrigger: checksPass        

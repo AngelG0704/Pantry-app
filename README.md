@@ -661,6 +661,31 @@ and the web app (a static site with a single-page-app rewrite rule). The databas
 is a separate hosted PostgreSQL (Neon). Both Render services deploy automatically
 **only after CI checks pass** (`autoDeployTrigger: checksPass`).
 
+### Database migrations on deploy
+
+The API's build command is `npm ci && npm run db:migrate`, so every deploy applies any
+new migration to the hosted database **before** the new version starts. If a migration
+fails, the build fails and the current version keeps serving. The start command never
+runs migrations, so a free instance waking up from sleep doesn't touch the schema.
+
+Because the migration runs while the old version is still live, every migration must
+work with the code currently deployed: adding a table or a nullable column is safe;
+renaming or dropping something the live code uses takes two releases (add and switch
+first, remove later).
+
+**Take a backup before deploying a new migration.** The free database plan keeps only a
+short history, which is not a backup. From `server/`, with the hosted **direct**
+connection string:
+
+    $neon = Read-Host "Paste the direct connection string"
+    pg_dump --format=custom --file="$HOME\pantry-backups\neon-YYYY-MM-DD-before-NNN.dump" $neon
+    Remove-Variable neon
+
+`Read-Host` keeps the password out of your PowerShell history. Keep dumps outside the
+repository: they contain user emails and password hashes. To check a dump, restore it
+into an empty local database with `pg_restore --no-owner --no-privileges -d <db> <file>`
+and compare row counts. `pg_dump` must be the same major version as the server or newer.
+
 ### Settings that matter in production
 
 **API service** (set in the Render dashboard; values marked secret are never
@@ -797,7 +822,6 @@ check each provider's current terms.
 | `vitest: not found` in CI | The lockfile doesn't include the test packages. Run `npm install` in `client/` and commit `package-lock.json`. |
 | A client test passes locally but fails in CI | A hardcoded date or locale, or a filename casing mismatch (Linux is case-sensitive). |
 
-
 ---
 
 ## Roadmap
@@ -822,7 +846,7 @@ Ideas for what could come next: a database migration tool, an error-tracking ser
 - On the free hosting plans, the API and the database both sleep when idle, so the first request after a quiet period is slow.
 - No staging environment: a commit that passes CI deploys to production.
 - The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
-- Migrations run only by hand (`npm run db:migrate` or `npm run db:seed`), not on deploy, and there are no down (undo) migrations: a mistake is fixed with a new migration. No backup or restore procedure is documented for the hosted database.
+- Migrations run during the API's build, and there are no down (undo) migrations: a mistake is fixed with a new migration. Backups of the hosted database are manual (`pg_dump`, see "Database migrations on deploy"), not scheduled.
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
