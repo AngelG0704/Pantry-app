@@ -3,12 +3,12 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
-## Unreleased
+## 11-03-2026
 ### Phase 10: Database migrations
 
 The schema is now built and changed through numbered migration files instead of a
-single `schema.sql`. Nothing has been migrated in production yet, and the deployed
-app behaves exactly as before.
+single `schema.sql`. On 11-03-2026 the production database was backed up with `pg_dump` (the restore was checked locally) and the runner was run there once by hand: it
+recorded `001` and changed nothing else.
 
 ### Added
 
@@ -31,6 +31,9 @@ app behaves exactly as before.
   transaction.
 - The test helper `resetDatabase()` builds the schema through the migrations, so
   every test run, locally and in CI, exercises them.
+- The API's Render build command is now `npm ci && npm run db:migrate`, so every
+  deploy applies new migrations before the new version starts. A failed migration
+  fails the build and the current version keeps serving.
 
 ### Removed
 
@@ -38,8 +41,8 @@ app behaves exactly as before.
 
 ### Known limitations
 
-- Migrations are not run on deploy yet.
-- No down (undo) migrations: a mistake is fixed with a new migration.
+- Migrations run in the build step because the free instance type has no
+  pre-deploy command. Backups of the hosted database are manual (`pg_dump`).- No down (undo) migrations: a mistake is fixed with a new migration.
 - The runner itself has no automated tests. It was checked by hand on a sandbox
   database: empty database, repeat run, database built by the old seed, edited
   migration, broken migration, and two runs at once.
