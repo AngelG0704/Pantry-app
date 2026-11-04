@@ -52,6 +52,14 @@ export const addPantryBody = z.object({
     .max(MAX_INT, 'ingredientId must be a positive integer'),
 });
 
+const EXPIRES_ON_MESSAGE = 'expiresOn must be a date in YYYY-MM-DD form, or null';
+
+// PATCH /api/pantry/:ingredientId
+// Key required (null clears the date); unknown keys rejected until the server supports them.
+export const pantryExpiryBody = z.strictObject({
+  expiresOn: z.iso.date({ message: EXPIRES_ON_MESSAGE }).nullable(),
+});
+
 const emailField = z
   .string({ message: 'email is required' })
   .trim()
