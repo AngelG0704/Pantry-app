@@ -198,6 +198,7 @@ erDiagram
         int user_id PK
         int ingredient_id PK
         timestamptz added_at
+        date expires_on "nullable"
     }
 ```
 
@@ -383,10 +384,11 @@ responses are JSON.
 | POST | `/api/auth/register` | none | Create an account |
 | POST | `/api/auth/login` | none | Log in and receive a token |
 | GET | `/api/auth/me` | Bearer | The current user |
-| GET | `/api/pantry` | Bearer | List my pantry |
+| GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date) |
 | POST | `/api/pantry` | Bearer | Add an ingredient to my pantry |
 | DELETE | `/api/pantry/:ingredientId` | Bearer | Remove an ingredient from my pantry |
 | GET | `/api/pantry/matches` | Bearer | Rank recipes against my saved pantry |
+| PATCH | `/api/pantry/:ingredientId` | Bearer | Set or clear an item's expiry date |
 
 Exact request and response details for each endpoint are in
 [CHANGELOG.md](CHANGELOG.md), under the version that introduced it.
@@ -557,7 +559,7 @@ npm test -- --test-name-pattern="tampered"
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
 | `matching.test.js` | 20 | Ranking, scoring, missing ingredients, `maxMissing`, input validation |
-| `pantry.test.js` | 32 | Authentication on every route, ownership, idempotency, cascade, pantry matching |
+| `pantry.test.js` | 54 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items) |
 | `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
 | `security.test.js` | 7 | Headers, CORS allowlist and preflight, body size limit |
 | `rateLimit.test.js` | 8 | Limiter behavior, and which limiter guards which route |
@@ -675,7 +677,7 @@ first, remove later).
 
 **Take a backup before deploying a new migration.** The free database plan keeps only a
 short history, which is not a backup. From `server/`, with the hosted **direct**
-connection string:
+connection string, A deploy starts as soon as the pull request is merged, so take the backup before clicking **Merge**.:
 
     $neon = Read-Host "Paste the direct connection string"
     pg_dump --format=custom --file="$HOME\pantry-backups\neon-YYYY-MM-DD-before-NNN.dump" $neon
@@ -839,7 +841,7 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: a database migration tool, an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit
 
 ## Known limitations
 
