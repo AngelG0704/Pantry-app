@@ -3,8 +3,42 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-04-2026
+### Version 1.4.0: Pantry expiry dates (in progress)
+
+Each pantry item can now have an optional expiry date. This entry covers the server
+part (11A-1); the web app part follows in 11A-2.
+
+### Added
+
+- **Migration `002_pantry_expiry.sql`:** a nullable `expires_on DATE` column on
+  `pantry_items`. Existing rows have no date. It was applied on the 11-04-2026 deploy.
+- **`PATCH /api/pantry/:ingredientId`** (Bearer), body `{ "expiresOn": "YYYY-MM-DD" }`
+  to set the date or `{ "expiresOn": null }` to clear it.
+  - `200` with the updated item: `{ "id": 1, "name": "egg", "expiresOn": "2026-11-10" }`
+  - `404` if the ingredient isn't in the caller's pantry (another user's item is never changed)
+  - `400` for an id that isn't a number, a date that isn't a real calendar date in
+    `YYYY-MM-DD` form, a missing `expiresOn`, or any other key in the body
+  - Past dates are allowed.
+- **22 server tests** (135 → 157), including exact-date checks that fail if a date
+  comes back as a timestamp or shifted by a day.
+
+### Changed
+
+- `GET /api/pantry` items now include `expiresOn`: `"YYYY-MM-DD"` or `null`.
+  `POST /api/pantry` still returns `{ id, name }`.
+
+### Notes
+
+- Dates are returned as text (`to_char`) because node-postgres would otherwise turn a
+  `DATE` into a JavaScript `Date` at local midnight, which can serialize as the
+  previous day.
+- The production backup for this release was taken after the deploy rather than
+  before (`neon-2026-11-04-after-002.dump`). The migration only adds an empty column,
+  so no data was at risk.
+
 ## 11-03-2026
-### Phase 10: Database migrations
+### Verision 1.3.0: Database migrations
 
 The schema is now built and changed through numbered migration files instead of a
 single `schema.sql`. On 11-03-2026 the production database was backed up with `pg_dump` (the restore was checked locally) and the runner was run there once by hand: it
@@ -42,7 +76,8 @@ recorded `001` and changed nothing else.
 ### Known limitations
 
 - Migrations run in the build step because the free instance type has no
-  pre-deploy command. Backups of the hosted database are manual (`pg_dump`).- No down (undo) migrations: a mistake is fixed with a new migration.
+  pre-deploy command. Backups of the hosted database are manual (`pg_dump`).
+- No down (undo) migrations: a mistake is fixed with a new migration.
 - The runner itself has no automated tests. It was checked by hand on a sandbox
   database: empty database, repeat run, database built by the old seed, edited
   migration, broken migration, and two runs at once.
