@@ -611,3 +611,76 @@ progress::-moz-progress-bar {
    font-size: var(--text-sm);
    color: var(--color-danger);
 }
+
+/* ===== Expiry dates (11A-2) ===== */
+/* Same card as the recipe ingredient list: one bordered box, rows split by lines. */
+.expiry-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.expiry-list li {
+  display: flex;
+  flex-wrap: wrap;              /* the form drops below the name on narrow screens */
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.expiry-list li:last-child {
+  border-bottom: none;
+}
+
+.expiry-name {
+  font-weight: 600;
+}
+
+.expiry-status {
+  flex: 1;                      /* pushes the form to the right edge */
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+/* The global form rule is a spaced vertical grid; a row's form is one compact line. */
+.expiry-form {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.expiry-form input[type="date"] {
+  padding: var(--space-1) var(--space-2);
+}
+
+.expiry-form button {
+  padding: var(--space-1) var(--space-3);
+}
+
+/* Save is the action of one row, not of the page: keep it outlined like Clear,
+   so a long pantry isn't a column of terracotta buttons. */
+.expiry-form button[type="submit"] {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  font-weight: 600;
+}
+
+.expiry-form button[type="submit"]:hover {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.expiry-form button[type="submit"]:disabled,
+.expiry-form button[type="submit"]:disabled:hover {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}

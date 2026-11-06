@@ -117,6 +117,14 @@ export function removeFromPantry(token, ingredientId) {
   });
 }
 
+export function setPantryExpiry(token, ingredientId, expiresOn) {
+  return request(`/api/pantry/${encodeURIComponent(ingredientId)}`, {
+    method: 'PATCH',
+    body: { expiresOn },
+    token,
+  });
+}
+
 export function getMyMatches(token, { maxMissing = '', signal } = {}) {
   const params = new URLSearchParams();
 
