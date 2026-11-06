@@ -52,6 +52,22 @@ describe('security hardening', () => {
       assert.match(res.headers['access-control-allow-headers'], /Authorization/i);
     });
 
+    // Every method a route uses must be in the CORS list, or browsers block it.
+    // supertest ignores CORS, so route tests alone can't catch a missing method.
+    for (const method of ['POST', 'PATCH', 'DELETE']) {
+      it(`allows ${method} in a preflight from a listed origin`, async () => {
+        const res = await api
+          .options('/api/pantry/1')
+          .set('Origin', ALLOWED)
+          .set('Access-Control-Request-Method', method)
+          .set('Access-Control-Request-Headers', 'authorization,content-type');
+
+        assert.equal(res.status, 204);
+        const allowed = res.headers['access-control-allow-methods'].split(',');
+        assert.ok(allowed.includes(method), `${method} missing from: ${allowed}`);
+      });
+    }
+
     it('gives an unlisted origin no permission in a preflight', async () => {
       const res = await api
         .options('/api/pantry')
