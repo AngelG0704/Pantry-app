@@ -4,10 +4,11 @@ All notable changes to this project will be further documented in this file, see
 for a more broad information about this project.
 
 ## 11-04-2026
-### Version 1.4.0: Pantry expiry dates (in progress)
+### Version 1.4.0: Pantry expiry dates 
 
-Each pantry item can now have an optional expiry date. This entry covers the server
-part (11A-1); the web app part follows in 11A-2.
+Each pantry item can now have an optional expiry date, set and cleared on the Pantry
+page. The server part (11A-1) was deployed on 11-04-2026, the web app part (11A-2)
+on 11-05-2026.
 
 ### Added
 
@@ -22,6 +23,15 @@ part (11A-1); the web app part follows in 11A-2.
   - Past dates are allowed.
 - **22 server tests** (135 → 157), including exact-date checks that fail if a date
   comes back as a timestamp or shifted by a day.
+  - **Web app: an "Expiry dates" section** on the Pantry page, under "In your pantry".
+  Each item shows "expires Nov 10, 2026" or "No date", with a date input, **Save**, and
+  **Clear**. Save is enabled only for a real change; Enter in the date input saves.
+- **`setPantryExpiry(token, ingredientId, expiresOn)`** in `api.js` (PATCH). Clearing
+  sends `{ "expiresOn": null }`, never an empty body.
+- **`formatExpiry`** (`dates.js`): formats a `YYYY-MM-DD` date in UTC so it shows the
+  same day in every time zone.
+- **34 web app tests** (204 → 238), including time-zone tests pinned to New York and a
+  test that replays Chrome's digit-by-digit year changes.
 
 ### Changed
 
@@ -36,6 +46,12 @@ part (11A-1); the web app part follows in 11A-2.
 - The production backup for this release was taken after the deploy rather than
   before (`neon-2026-11-04-after-002.dump`). The migration only adds an empty column,
   so no data was at risk.
+- Saving a date waits for the server instead of updating at once. A failed save keeps
+  the old date and shows the pantry's error alert. Saving a date doesn't refresh the
+  recipe matches, because dates don't affect them.
+- Dates are saved with an explicit button, not on every change: in Chrome, typing the
+  year 2027 changes the input to 0002, 0020, 0202, then 2027, and each of those is a
+  valid date the server would accept.
 
 ## 11-03-2026
 ### Verision 1.3.0: Database migrations
