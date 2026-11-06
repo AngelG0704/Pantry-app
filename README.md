@@ -25,9 +25,9 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Accounts:** register and log in with email and password
 - **A personal pantry** that persists between sessions and is private to each user
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
-- **A web app** (React) with an ingredient picker, ranked results, recipe details, in a warm theme with full light and dark modes.
-  and a pantry screen
-- **A tested, hardened stack:** 135 server tests and 204 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+- **A web app** (React) with an ingredient picker, ranked results, recipe details,
+  and a pantry screen with expiry dates, in a warm theme with full light and dark modes
+- **A tested, hardened stack:** 157 server tests and 238 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated inputCORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -341,7 +341,7 @@ address from `client/.env.development` (`VITE_API_URL`, default
 | `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
 | `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
 | `/login`, `/register` | no | Forms that show the server's validation messages beside each field |
-| `/pantry` | **yes** | Your saved pantry; ranked recipes update automatically as you tick and untick |
+| `/pantry` | **yes** | Your saved pantry with optional expiry dates; ranked recipes update automatically as you tick and untick |
 | `/account` | **yes** | Your email and join date |
 | anything else | no | A "Page not found" screen |
 
@@ -594,12 +594,11 @@ Before each test the page is emptied and mocks are reset.
 
 | Area | Files (tests) | What it guards |
 |---|---|---|
-| API layer | `api.test.js` (18) | Request building, `ApiError`, network and abort handling, the unauthorized handler |
-| Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
+| API layer | `api.test.js` (20) | Request building, `ApiError`, network and abort handling, the unauthorized handler || Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
 | Auth pages | `LoginPage.test.jsx` (6), `RegisterPage.test.jsx` (11), `AccountPage.test.jsx` (2) | Redirects, per-field errors, the submitting state, the creation date |
 | Search | `HomePage.test.jsx` (18), `useSearchState.test.js` (9), `useRecipeMatches.test.js` (8), `useIngredients.test.js` (6) | Picking, the 50-ingredient limit, searching, aborted requests, error and retry |
-| Pantry | `PantryPage.test.jsx` (16), `usePantry.test.js` (12), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users |
-| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
+| Pantry | `PantryPage.test.jsx` (23), `usePantry.test.js` (19), `PantryExpiryList.test.jsx` (12), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, setting and clearing expiry dates, no save while a date is being typed |
+| Dates | `dates.test.js` (6) | Expiry dates show the same day in every time zone || Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
 | Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
 
 The server tests pin which fields the API sends; the client tests pin how they are
@@ -632,8 +631,8 @@ Two jobs run in parallel, each on a fresh Linux machine:
 
 | Job | What it does |
 |---|---|
-| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 135 tests |
-| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 204 web app tests, and builds the production bundle |
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 157 tests |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 238 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
@@ -841,21 +840,21 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit, Add “pantry quantities", and “highlighting items that expire soon” to the list.
 
 ## Known limitations
 
 - On the free hosting plans, the API and the database both sleep when idle, so the first request after a quiet period is slow.
 - No staging environment: a commit that passes CI deploys to production.
-- The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
+- The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.
+- No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
 - Migrations run during the API's build, and there are no down (undo) migrations: a mistake is fixed with a new migration. Backups of the hosted database are manual (`pg_dump`, see "Database migrations on deploy"), not scheduled.
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records only presence, with no quantities or expiry dates, and has no bulk operations.
-- Ingredient names are matched exactly, with no synonyms.
+- The pantry records presence and an optional expiry date, but no quantities, and has no bulk operations. Items aren't sorted or highlighted by how soon they expire.- Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
-- No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has()`, which need a current browser.
+- No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has( `, which need a current browser.
 - The site runs on the hosting platform's domain, not a custom one.
 
 ## Changelog
