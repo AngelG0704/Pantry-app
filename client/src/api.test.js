@@ -10,6 +10,7 @@ import {
   addToPantry,
   getCurrentUser,
   setUnauthorizedHandler,
+  setPantryExpiry,
 } from './api.js';
 
 const API = 'http://api.test';
@@ -201,6 +202,29 @@ describe('request URLs', () => {
     const { url, options } = sent();
     expect(url).toBe(`${API}/api/pantry/7`);
     expect(options.method).toBe('DELETE');
+  });
+
+  it('sets an expiry date with PATCH on the item path and returns the updated item', async () => {
+    const item = { id: 7, name: 'egg', expiresOn: '2026-11-10' };
+    fetchMock.mockResolvedValueOnce(jsonResponse(item));
+
+    const result = await setPantryExpiry('my-token', 7, '2026-11-10');
+
+    const { url, options } = sent();
+    expect(url).toBe(`${API}/api/pantry/7`);
+    expect(options.method).toBe('PATCH');
+    expect(options.headers.Authorization).toBe('Bearer my-token');
+    expect(options.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(options.body)).toEqual({ expiresOn: '2026-11-10' });
+    expect(result).toEqual(item);
+  });
+
+  it('clears an expiry date by sending expiresOn: null (not an empty body)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 7, name: 'egg', expiresOn: null }));
+
+    await setPantryExpiry('my-token', 7, null);
+
+    expect(JSON.parse(sent().options.body)).toEqual({ expiresOn: null });
   });
 
   it('adds no query string to pantry matches when maxMissing is empty', async () => {

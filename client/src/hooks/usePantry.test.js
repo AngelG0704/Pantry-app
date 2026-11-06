@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { usePantry } from './usePantry.js';
-import { addToPantry, getPantry, removeFromPantry } from '../api.js';
+import { addToPantry, getPantry, removeFromPantry, setPantryExpiry } from '../api.js';
 
 vi.mock('../api.js', () => ({
   getPantry: vi.fn(),
   addToPantry: vi.fn(),
   removeFromPantry: vi.fn(),
+  setPantryExpiry: vi.fn(),
 }));
 
 const EGG = { id: 1, name: 'egg' };
@@ -253,4 +254,122 @@ describe('usePantry: requests in flight', () => {
     expect(result.current.actionError).toBe('');
     expect(result.current.ids).toEqual([2]);
   });
+
+describe('usePantry: expiry dates', () => {
+  const DATED_EGG = { ...EGG, expiresOn: '2026-11-10' };
+  const UNDATED_BUTTER = { ...BUTTER, expiresOn: null };
+
+  // Start a save and return WITHOUT waiting for it (same trick as startToggle).
+  async function startSetExpiry(result, id, value) {
+    let promise;
+    await act(async () => {
+      promise = result.current.setExpiry(id, value);
+    });
+    return { finished: promise };
+  }
+
+  async function setExpiryAndWait(result, id, value) {
+    let saved;
+    await act(async () => {
+      saved = await result.current.setExpiry(id, value);
+    });
+    return saved;
+  }
+
+  it('fills the dates from the server when the pantry loads', async () => {
+    const { result } = await renderLoaded([DATED_EGG, UNDATED_BUTTER]);
+
+    expect(result.current.expiry).toEqual({ 1: '2026-11-10', 2: null });
+  });
+
+  it('waits for the server, then keeps the date it returned; the version does not change', async () => {
+    const request = deferred();
+    setPantryExpiry.mockReturnValue(request.promise);
+    const { result } = await renderLoaded([UNDATED_BUTTER, EGG]);
+
+    const started = await startSetExpiry(result, 1, '2026-11-10');
+
+    // Not optimistic: nothing changes until the server answers.
+    expect(result.current.expiry[1]).toBe(null);
+    expect(result.current.pendingIds).toEqual([1]);
+    expect(setPantryExpiry).toHaveBeenCalledWith('tok', 1, '2026-11-10');
+
+    let saved;
+    await act(async () => {
+      request.resolve({ id: 1, name: 'egg', expiresOn: '2026-11-10' });
+      saved = await started.finished;
+    });
+
+    expect(saved).toBe(true);
+    expect(result.current.expiry[1]).toBe('2026-11-10');
+    expect(result.current.pendingIds).toEqual([]);
+    expect(result.current.version).toBe(0);
+  });
+
+  it('clears a date with null', async () => {
+    setPantryExpiry.mockResolvedValue({ id: 1, name: 'egg', expiresOn: null });
+    const { result } = await renderLoaded([DATED_EGG]);
+
+    await setExpiryAndWait(result, 1, null);
+
+    expect(setPantryExpiry).toHaveBeenCalledWith('tok', 1, null);
+    expect(result.current.expiry[1]).toBe(null);
+  });
+
+  it('keeps the old date and shows the error when saving fails', async () => {
+    setPantryExpiry.mockRejectedValue(
+      apiError('expiresOn must be a date in YYYY-MM-DD form, or null', 400)
+    );
+    const { result } = await renderLoaded([DATED_EGG]);
+
+    const saved = await setExpiryAndWait(result, 1, '2026-12-01');
+
+    expect(saved).toBe(false);
+    expect(result.current.expiry[1]).toBe('2026-11-10');
+    expect(result.current.actionError).toBe(
+      'expiresOn must be a date in YYYY-MM-DD form, or null'
+    );
+    expect(result.current.pendingIds).toEqual([]);
+  });
+
+  it('does not save a date while that item is being removed, and vice versa', async () => {
+    const removal = deferred();
+    removeFromPantry.mockReturnValue(removal.promise);
+    const { result } = await renderLoaded([DATED_EGG]);
+
+    const started = await startToggle(result, 1);
+    const saved = await setExpiryAndWait(result, 1, '2026-12-01');
+
+    expect(saved).toBe(false);
+    expect(setPantryExpiry).not.toHaveBeenCalled();
+
+    await act(async () => {
+      removal.resolve(null);
+      await started.finished;
+    });
+  });
+
+  it('forgets the date when the item is removed, so re-adding starts with none', async () => {
+    removeFromPantry.mockResolvedValue(null);
+    addToPantry.mockResolvedValue({ id: 1, name: 'egg' });
+    const { result } = await renderLoaded([DATED_EGG]);
+
+    await toggleAndWait(result, 1);
+    expect(result.current.expiry).not.toHaveProperty('1');
+
+    await toggleAndWait(result, 1);
+    expect(result.current.ids).toEqual([1]);
+    expect(result.current.expiry[1] ?? null).toBe(null);
+  });
+
+  it('keeps the date when a removal fails and is rolled back', async () => {
+    removeFromPantry.mockRejectedValue(apiError('Something went wrong', 500));
+    const { result } = await renderLoaded([DATED_EGG]);
+
+    await toggleAndWait(result, 1);
+
+    expect(result.current.ids).toEqual([1]);
+    expect(result.current.expiry[1]).toBe('2026-11-10');
+  });
+});
 });

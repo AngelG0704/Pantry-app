@@ -6,6 +6,7 @@ import IngredientPicker from '../components/IngredientPicker.jsx';
 import SelectedIngredients from '../components/SelectedIngredients.jsx';
 import MaxMissingSelect from '../components/MaxMissingSelect.jsx';
 import RecipeResults from '../components/RecipeResults.jsx';
+import PantryExpiryList from '../components/PantryExpiryList.jsx';
 
 function PantryPage({ search }) {
   const { token } = useAuth();
@@ -58,6 +59,18 @@ function PantryPage({ search }) {
             onRemove={pantry.toggle}
             emptyMessage="Your pantry is empty. Tick some ingredients below."
           />
+
+          {inPantry.length > 0 && (
+            <>
+            <h3>Expiry dates</h3>
+              <PantryExpiryList
+                items={inPantry}
+                expiry={pantry.expiry}
+                pendingIds={pantry.pendingIds}
+                onSave={pantry.setExpiry}
+              />
+            </>
+          )}
 
           <IngredientPicker
             title="Add or remove ingredients"

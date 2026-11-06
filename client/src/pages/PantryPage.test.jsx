@@ -4,12 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import PantryPage from './PantryPage.jsx';
 import { useAuth } from '../auth/useAuth.js';
-import { addToPantry, getMyMatches, getPantry, removeFromPantry } from '../api.js';
+import { addToPantry, 
+        getMyMatches, 
+        getPantry, 
+        removeFromPantry,
+        setPantryExpiry 
+} from '../api.js';
 
 vi.mock('../api.js', () => ({
   getPantry: vi.fn(),
   addToPantry: vi.fn(),
   removeFromPantry: vi.fn(),
+  setPantryExpiry: vi.fn(),
   getMyMatches: vi.fn(),
 }));
 vi.mock('../auth/useAuth.js', () => ({ useAuth: vi.fn() }));
@@ -266,5 +272,94 @@ describe('PantryPage: changing the pantry', () => {
 
     expect(box('butter')).toBeDisabled();
     expect(box('bread')).toBeEnabled();
+  });
+
+  
+});
+
+describe('PantryPage: expiry dates', () => {
+  const DATED_EGG = { ...EGG, expiresOn: '2026-11-10' };
+  const UNDATED_BUTTER = { ...BUTTER, expiresOn: null };
+
+  // One row of the "Expiry dates" list, found by the ingredient's name.
+  const expiryRow = (name) =>
+    within(screen.getByRole('list', { name: 'Expiry dates' }))
+      .getByText(name)
+      .closest('li');
+
+  it('shows each saved date from the server, or "No date"', async () => {
+    await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
+
+    expect(screen.getByRole('heading', { name: 'Expiry dates' })).toBeInTheDocument();
+    expect(expiryRow('egg')).toHaveTextContent('expires Nov 10, 2026');
+    expect(expiryRow('butter')).toHaveTextContent('No date');
+  });
+
+  it('saves a date, shows what the server returned, and does not refresh the matches', async () => {
+    setPantryExpiry.mockResolvedValue({ id: 2, name: 'butter', expiresOn: '2026-12-01' });
+    await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText('Expiry date for butter'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Save expiry date for butter' }));
+
+    expect(setPantryExpiry).toHaveBeenCalledWith('tok', 2, '2026-12-01');
+    expect(await within(expiryRow('butter')).findByText('expires Dec 1, 2026')).toBeInTheDocument();
+    expect(getMyMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a date', async () => {
+    setPantryExpiry.mockResolvedValue({ id: 1, name: 'egg', expiresOn: null });
+    await renderReady({ pantry: [DATED_EGG] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Clear expiry date for egg' }));
+
+    expect(setPantryExpiry).toHaveBeenCalledWith('tok', 1, null);
+    expect(await within(expiryRow('egg')).findByText('No date')).toBeInTheDocument();
+    expect(screen.getByLabelText('Expiry date for egg')).toHaveValue('');
+  });
+
+  it('explains a failed save and keeps the old date', async () => {
+    setPantryExpiry.mockRejectedValue(apiError('Ingredient not in pantry', 404));
+    await renderReady({ pantry: [DATED_EGG] });
+    const user = userEvent.setup();
+
+    await user.clear(screen.getByLabelText('Expiry date for egg'));
+    await user.type(screen.getByLabelText('Expiry date for egg'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Save expiry date for egg' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not update your pantry: Ingredient not in pantry'
+    );
+    expect(expiryRow('egg')).toHaveTextContent('expires Nov 10, 2026');
+  });
+
+  it('gives a newly ticked ingredient a row with no date', async () => {
+    addToPantry.mockResolvedValue({ id: 2, name: 'butter' });
+    await renderReady({ pantry: [DATED_EGG] });
+    const user = userEvent.setup();
+
+    await user.click(box('butter'));
+
+    expect(expiryRow('butter')).toHaveTextContent('No date');
+  });
+
+  it('removes the row when the ingredient is removed', async () => {
+    removeFromPantry.mockResolvedValue(null);
+    await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Remove egg' }));
+
+    expect(
+      within(screen.getByRole('list', { name: 'Expiry dates' })).queryByText('egg')
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no expiry section for an empty pantry', async () => {
+    await renderReady({ pantry: [] });
+
+    expect(screen.queryByRole('heading', { name: 'Expiry dates' })).not.toBeInTheDocument();
   });
 });
