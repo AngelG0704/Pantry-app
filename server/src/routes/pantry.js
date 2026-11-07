@@ -3,7 +3,7 @@ import {
     getPantry,
     addPantryItem,
     removePantryItem,
-    setPantryExpiry,
+    updatePantryItem,
 } from '../controllers/pantryController.js';
 import { getMatchesForMyPantry } from "../controllers/recipeController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -12,7 +12,7 @@ import {
     addPantryBody,
     idParam,
     pantryMatchQuery,
-    pantryExpiryBody,
+    pantryItemPatchBody,
 } from '../validation/schemas.js';
 
 const router = Router();
@@ -34,9 +34,9 @@ router.patch(
     '/:ingredientId',
     validate({
         params: idParam('ingredientId', 'ingredientId'),
-        body: pantryExpiryBody,
+        body: pantryItemPatchBody,
     }),
-    setPantryExpiry
+    updatePantryItem
 );
 
 export default router;

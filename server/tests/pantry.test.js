@@ -9,6 +9,7 @@ import {
   resetDatabase,
   closeDatabase,
 } from './helpers.js';
+import { UNITS } from '../src/validation/schemas.js';
 
 describe('pantry', () => {
   let ids;
@@ -43,6 +44,15 @@ describe('pantry', () => {
   const expiryOf = async (session, ingredientId) =>
     (await listPantry(session)).body.find((item) => item.id === ingredientId)
       ?.expiresOn;
+  
+  const patchItem = (session, ingredientId, body) =>
+    api
+      .patch(`/api/pantry/${ingredientId}`)
+      .set(bearer(session.token))
+      .send(body);
+
+  const itemOf = async (session, ingredientId) =>
+    (await listPantry(session)).body.find((item) => item.id === ingredientId);
 
   const names = (res) => res.body.map((item) => item.name);
 
@@ -81,8 +91,8 @@ describe('pantry', () => {
 
       assert.equal(res.status, 200);
       assert.deepEqual(res.body, [
-        { id: ids.butter, name: 'butter', expiresOn: null },
-        { id: ids.egg, name: 'egg', expiresOn: null },
+        { id: ids.butter, name: 'butter', expiresOn: null, quantity: null, unit: null },
+        { id: ids.egg, name: 'egg', expiresOn: null, quantity: null, unit: null },
       ]);
     });
   });
@@ -199,7 +209,13 @@ describe('pantry', () => {
       const res = await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
 
       assert.equal(res.status, 200);
-      assert.deepEqual(res.body, { id: ids.egg, name: 'egg', expiresOn: '2026-11-10' });
+      assert.deepEqual(res.body, {
+        id: ids.egg,
+        name: 'egg',
+        expiresOn: '2026-11-10',
+        quantity: null,
+        unit: null,
+      });      
       assert.equal(await expiryOf(alice, ids.egg), '2026-11-10');
     });
 
@@ -285,9 +301,8 @@ describe('pantry', () => {
       ['a US-style date', { expiresOn: '11/04/2026' }],
       ['an empty string', { expiresOn: '' }],
       ['a number', { expiresOn: 20261110 }],
-      ['a missing expiresOn', {}],
-      ['an unknown key', { expiresOn: null, quantity: 2 }],
-    ];
+      ['an empty body', {}],
+      ['an unknown key', { expiresOn: null, color: 'red' }],    ];
 
     for (const [name, body] of invalidBodies) {
       it(`rejects ${name} with 400 and changes nothing`, async () => {
@@ -299,6 +314,163 @@ describe('pantry', () => {
         assert.equal(res.status, 400);
         assert.equal(typeof res.body.error, 'string');
         assert.equal(await expiryOf(alice, ids.egg), '2026-11-10');
+      });
+    }
+  });
+
+  describe('PATCH /api/pantry/:ingredientId (quantity and unit)', () => {
+    it('sets an amount, returns it as a number, and the list shows it', async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await patchItem(alice, ids.egg, { quantity: 6, unit: 'piece' });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, {
+        id: ids.egg,
+        name: 'egg',
+        expiresOn: null,
+        quantity: 6,
+        unit: 'piece',
+      });
+      const listed = await itemOf(alice, ids.egg);
+      assert.equal(listed.quantity, 6);
+      assert.equal(typeof listed.quantity, 'number');
+      assert.equal(listed.unit, 'piece');
+    });
+
+    // NUMERIC comes back from node-postgres as a string ("1.500") unless converted.
+    for (const quantity of [1.5, 0.25, 0.001, 1.005, 9999999.999]) {
+      it(`returns ${quantity} exactly, as a number`, async () => {
+        await addToPantry(alice, ids.egg);
+
+        const res = await patchItem(alice, ids.egg, { quantity, unit: 'g' });
+
+        assert.strictEqual(res.body.quantity, quantity);
+        assert.strictEqual((await itemOf(alice, ids.egg)).quantity, quantity);
+      });
+    }
+
+    it('clears the amount when both are null', async () => {
+      await addToPantry(alice, ids.egg);
+      await patchItem(alice, ids.egg, { quantity: 2, unit: 'cup' });
+
+      const res = await patchItem(alice, ids.egg, { quantity: null, unit: null });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.quantity, null);
+      assert.equal(res.body.unit, null);
+    });
+
+    it('keeps the date when only the amount is sent', async () => {
+      await addToPantry(alice, ids.egg);
+      await patchItem(alice, ids.egg, { expiresOn: '2026-11-10' });
+
+      await patchItem(alice, ids.egg, { quantity: 2, unit: 'cup' });
+
+      assert.equal((await itemOf(alice, ids.egg)).expiresOn, '2026-11-10');
+    });
+
+    it('keeps the amount when only the date is sent (or cleared)', async () => {
+      await addToPantry(alice, ids.egg);
+      await patchItem(alice, ids.egg, { quantity: 2, unit: 'cup' });
+
+      await patchItem(alice, ids.egg, { expiresOn: '2026-11-10' });
+      await patchItem(alice, ids.egg, { expiresOn: null });
+
+      const item = await itemOf(alice, ids.egg);
+      assert.equal(item.quantity, 2);
+      assert.equal(item.unit, 'cup');
+    });
+
+    it('sets the date and the amount in one request', async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await patchItem(alice, ids.egg, {
+        expiresOn: '2026-12-01',
+        quantity: 0.5,
+        unit: 'kg',
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(await itemOf(alice, ids.egg), {
+        id: ids.egg,
+        name: 'egg',
+        expiresOn: '2026-12-01',
+        quantity: 0.5,
+        unit: 'kg',
+      });
+    });
+
+    // The unit list lives in zod and in migration 003; if they disagree, this hits the
+    // database CHECK and fails with 500 instead of 200.
+    for (const unit of UNITS) {
+      it(`accepts the unit "${unit}" all the way into the database`, async () => {
+        await addToPantry(alice, ids.egg);
+
+        const res = await patchItem(alice, ids.egg, { quantity: 1, unit });
+
+        assert.equal(res.status, 200);
+        assert.equal(res.body.unit, unit);
+      });
+    }
+
+    it('starts with no amount, and again after the item is removed and re-added', async () => {
+      await addToPantry(alice, ids.egg);
+      assert.equal((await itemOf(alice, ids.egg)).quantity, null);
+
+      await patchItem(alice, ids.egg, { quantity: 2, unit: 'cup' });
+      await api.delete(`/api/pantry/${ids.egg}`).set(bearer(alice.token));
+      await addToPantry(alice, ids.egg);
+
+      const item = await itemOf(alice, ids.egg);
+      assert.equal(item.quantity, null);
+      assert.equal(item.unit, null);
+    });
+
+    it('returns 404 for an ingredient that is not in the pantry', async () => {
+      const res = await patchItem(alice, ids.egg, { quantity: 2, unit: 'cup' });
+
+      assert.equal(res.status, 404);
+    });
+
+    it('explains that quantity and unit go together', async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await patchItem(alice, ids.egg, { quantity: 2 });
+
+      assert.equal(res.status, 400);
+      assert.equal(
+        res.body.error,
+        'quantity and unit must be sent together, both set or both null'
+      );
+    });
+
+    const invalidBodies = [
+      ['a quantity without a unit', { quantity: 2 }],
+      ['a unit without a quantity', { unit: 'cup' }],
+      ['a null quantity with a unit', { quantity: null, unit: 'cup' }],
+      ['a quantity with a null unit', { quantity: 2, unit: null }],
+      ['a quantity of zero', { quantity: 0, unit: 'cup' }],
+      ['a negative quantity', { quantity: -1, unit: 'cup' }],
+      ['more than 3 decimal places', { quantity: 1.2345, unit: 'cup' }],
+      ['a quantity sent as a string', { quantity: '2', unit: 'cup' }],
+      ['a quantity too large for the column', { quantity: 10000000, unit: 'g' }],
+      ['a unit in the wrong case', { quantity: 2, unit: 'Cup' }],
+      ['an unknown unit', { quantity: 2, unit: 'pinch' }],
+      ['a valid date with an invalid amount', { expiresOn: '2026-12-01', quantity: 0, unit: 'cup' }],
+    ];
+
+    for (const [name, body] of invalidBodies) {
+      it(`rejects ${name} with 400 and changes nothing`, async () => {
+        await addToPantry(alice, ids.egg);
+        await patchItem(alice, ids.egg, { expiresOn: '2026-11-10', quantity: 2, unit: 'cup' });
+        const before = await itemOf(alice, ids.egg);
+
+        const res = await patchItem(alice, ids.egg, body);
+
+        assert.equal(res.status, 400);
+        assert.equal(typeof res.body.error, 'string');
+        assert.deepEqual(await itemOf(alice, ids.egg), before);
       });
     }
   });
@@ -361,6 +533,15 @@ describe('pantry', () => {
 
       assert.equal(res.status, 404);
       assert.equal(await expiryOf(alice, ids.egg), null);
+    });
+
+    it("does not let one user set the amount on another user's item", async () => {
+      await addToPantry(alice, ids.egg);
+
+      const res = await patchItem(bob, ids.egg, { quantity: 2, unit: 'cup' });
+
+      assert.equal(res.status, 404);
+      assert.equal((await itemOf(alice, ids.egg)).quantity, null);
     });
 
     it('keeps separate dates when two users have the same ingredient', async () => {
