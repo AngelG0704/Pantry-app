@@ -45,16 +45,15 @@ export async function removePantryItem(req, res, next) {
     }
 }
 
-export async function setPantryExpiry(req, res, next) {
+export async function updatePantryItem(req, res, next) {
     try {
         const { ingredientId } = req.valid.params;
-        const { expiresOn } = req.valid.body;
 
         if (ingredientId > MAX_INT) {
             return res.status(404).json({ error: 'Ingredient not in pantry' });
         }
 
-        const item = await pantryService.setPantryExpiry(req.user.id, ingredientId, expiresOn);
+        const item = await pantryService.updatePantryItem(req.user.id, ingredientId, req.valid.body);
         if (!item) {
             return res.status(404).json({ error: 'Ingredient not in pantry' });
         }
