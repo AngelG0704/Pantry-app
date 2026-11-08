@@ -26,8 +26,8 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **A personal pantry** that persists between sessions and is private to each user
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
-  and a pantry screen with expiry dates, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 196 server tests and 238 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+  and a pantry screen with amounts, expiry dates, and search, in a warm theme with full light and dark modes
+- **A tested, hardened stack:** 196 server tests and 313 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -35,6 +35,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 ## Tech stack
 
 | Layer | Technology |
+
 |---|---|
 | Frontend | React, Vite, React Router |
 | Runtime | Node.js 20.10+ (ES modules) |
@@ -76,6 +77,7 @@ request logger → helmet → cors → (health checks) → rate limit → JSON p
 ```
 
 | Stage | Job |
+
 |---|---|
 | **request logger** | Assigns a request id, returns it in `X-Request-Id`, and writes one log line per request |
 | **helmet** | Adds security headers to every response and removes `X-Powered-By` |
@@ -91,6 +93,7 @@ request logger → helmet → cors → (health checks) → rate limit → JSON p
 ### Server layers
 
 | Layer | Job | Knows about HTTP? | Knows about SQL? |
+
 |---|---|---|---|
 | **Routes** | Map a method and URL to a chain of middleware and a controller | Yes | No |
 | **Middleware** | Cross-cutting concerns: logging, authentication, validation, rate limiting, errors | Yes | No |
@@ -251,6 +254,7 @@ node -e "console.log(crypto.randomBytes(48).toString('hex'))"
 Optional settings, all validated at startup:
 
 | Variable | Default | Purpose |
+
 |---|---|---|
 | `PORT` | `3000` | The port to listen on; hosting platforms set this for you |
 | `NODE_ENV` | `development` | Set to `production` when deployed; this switches on stricter startup checks |
@@ -316,16 +320,19 @@ address from `client/.env.development` (`VITE_API_URL`, default
 **Server** (`server/`):
 
 | Script | What it does |
+
 |---|---|
 | `npm run dev` | Starts the server and restarts on code changes (`node --watch`) |
 | `npm start` | Starts the server |
 | `npm run db:migrate` | Applies any migrations not yet recorded in `schema_migrations` (safe to repeat) |
-| `npm run db:seed` | Runs the migrations, then loads the seed data (safe to repeat) || `npm test` | Runs the automated test suite against the test database |
+| `npm run db:seed` | Runs the migrations, then loads the seed data (safe to repeat) |
+| `npm test` | Runs the automated test suite against the test database |
 | `npm run test:coverage` | Runs the suite and prints a coverage report |
 
 **Client** (`client/`):
 
 | Script | What it does |
+
 |---|---|
 | `npm run dev` | Starts the Vite dev server on port 5173 |
 | `npm run build` | Builds the production bundle into `dist/` |
@@ -339,11 +346,12 @@ address from `client/.env.development` (`VITE_API_URL`, default
 ## The web app
 
 | Address | Login | What it shows |
+
 |---|---|---|
 | `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
 | `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
 | `/login`, `/register` | no | Forms that show the server's validation messages beside each field |
-| `/pantry` | **yes** | Your saved pantry with optional expiry dates; ranked recipes update automatically as you tick and untick |
+| `/pantry` | **yes** | Your saved pantry: each item's amount and expiry date (rows open to edit or remove), a search box, and ranked recipes that update as you tick and untick; long lists scroll in a frame |
 | `/account` | **yes** | Your email and join date |
 | anything else | no | A "Page not found" screen |
 
@@ -355,7 +363,6 @@ How it's built:
 - **Optimistic pantry updates.** Ticking an ingredient updates the screen immediately and is undone with an error message if the request fails.
 - **Text, never HTML.** React inserts recipe text as text, so stored content cannot inject markup.
 - **One stylesheet with design tokens.** `src/index.css` defines colors, spacing, and type once on `:root`; `light-dark()` gives each color a light and a dark value, so the theme follows the device setting. Terracotta marks actions and sage marks "you have this". No CSS framework and no third-party fonts.
-
 
 ### Sessions in the browser
 
@@ -377,6 +384,7 @@ The server listens on port 3000 by default (or the `PORT` it is given). All
 responses are JSON.
 
 | Method | Path | Auth | Description |
+
 |---|---|---|---|
 | GET | `/api/health/live` | none | Liveness: is the process running? |
 | GET | `/api/health` | none | Readiness: is the database reachable? (`200` or `503`) |
@@ -404,6 +412,7 @@ Exact request and response details for each endpoint are in
 - Status codes carry meaning:
 
   | Code | Meaning |
+
   |---|---|
   | `200` / `201` / `204` | Success / created / success with no body |
   | `400` | The request itself is invalid |
@@ -473,6 +482,7 @@ cannot see or change another user's pantry.
 ## Security and hardening
 
 | Protection | How it works |
+
 |---|---|
 | **Brute-force limits** | 10 failed logins per 15 minutes per IP, 20 registrations per hour, 300 requests per 15 minutes overall. A blocked client gets `429` with `Retry-After`. Counters live in server memory. |
 | **CORS allowlist** | Only origins in `CORS_ORIGINS` can read responses from a browser. This protects users, not the server, and is not a substitute for authentication. |
@@ -511,7 +521,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **196 automated tests** and runs against a separate database, so it never touches your development data. The web app has **238 tests** that run withouta server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **196 automated tests** and runs against a separate database, so it never touches your development data. The web app has **313 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -522,7 +532,6 @@ The server has **196 automated tests** and runs against a separate database, so 
    ```
 
 2. Create `server/.env.test` (and keep it out of Git):
-
    ```
    DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/pantry_test
    JWT_SECRET=test-only-secret-that-is-at-least-32-characters-long
@@ -555,6 +564,7 @@ npm test -- --test-name-pattern="tampered"
 ### What's covered
 
 | File | Tests | What it guards |
+
 |---|---|---|
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
@@ -587,18 +597,22 @@ cd client
 npm test
 npm run test:watch
 ```
+
 Tests render a component into a fake browser (jsdom) and find things the way a
 user does: by role, label, and visible text. They never call a real API: `fetch` is
 replaced in the `api.js` tests, and `api.js` or `useAuth` is replaced in the rest.
 Before each test the page is emptied and mocks are reset.
 
 | Area | Files (tests) | What it guards |
+
 |---|---|---|
-| API layer | `api.test.js` (20) | Request building, `ApiError`, network and abort handling, the unauthorized handler || Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
+| API layer | `api.test.js` (22) | Request building, `ApiError`, network and abort handling, the unauthorized handler, partial-update bodies |
+| Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
 | Auth pages | `LoginPage.test.jsx` (6), `RegisterPage.test.jsx` (11), `AccountPage.test.jsx` (2) | Redirects, per-field errors, the submitting state, the creation date |
 | Search | `HomePage.test.jsx` (18), `useSearchState.test.js` (9), `useRecipeMatches.test.js` (8), `useIngredients.test.js` (6) | Picking, the 50-ingredient limit, searching, aborted requests, error and retry |
-| Pantry | `PantryPage.test.jsx` (23), `usePantry.test.js` (19), `PantryExpiryList.test.jsx` (12), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, setting and clearing expiry dates, no save while a date is being typed |
-| Dates | `dates.test.js` (6) | Expiry dates show the same day in every time zone || Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
+| Pantry | `PantryPage.test.jsx` (35), `PantryExpiryList.test.jsx` (37), `usePantry.test.js` (26), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, dates and amounts (numbers not strings, both fields kept), collapsing rows, two-step remove, scroll frames, search |
+| Dates | `dates.test.js` (6) | Expiry dates show the same day in every time zone |
+| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
 | Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
 
 The server tests pin which fields the API sends; the client tests pin how they are
@@ -608,7 +622,6 @@ name, so change both together.
 Tests sit next to the code they test, so a file such as `HomePage.jsx` has
 `HomePage.test.jsx` beside it. Pages and hooks are tested twice where it matters: once
 with hand-built input, and once together with the real hooks.
-
 
 ### Manual testing
 
@@ -630,9 +643,10 @@ regressions; Postman is for exploring.
 Two jobs run in parallel, each on a fresh Linux machine:
 
 | Job | What it does |
+
 |---|---|
 | **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 196 tests |
-| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 238 web app tests, and builds the production bundle |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 313 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
@@ -678,9 +692,9 @@ first, remove later).
 short history, which is not a backup. From `server/`, with the hosted **direct**
 connection string, A deploy starts as soon as the pull request is merged, so take the backup before clicking **Merge**.:
 
-    $neon = Read-Host "Paste the direct connection string"
-    pg_dump --format=custom --file="$HOME\pantry-backups\neon-YYYY-MM-DD-before-NNN.dump" $neon
-    Remove-Variable neon
+  $neon = Read-Host "Paste the direct connection string"
+  pg_dump --format=custom --file="$HOME\pantry-backups\neon-YYYY-MM-DD-before-NNN.dump" $neon
+  Remove-Variable neon
 
 `Read-Host` keeps the password out of your PowerShell history. Keep dumps outside the
 repository: they contain user emails and password hashes. To check a dump, restore it
@@ -693,6 +707,7 @@ and compare row counts. `pg_dump` must be the same major version as the server o
 written to Git):
 
 | Variable | Value |
+
 |---|---|
 | `NODE_ENV` | `production` (set in the blueprint) |
 | `TRUST_PROXY` | `1`, matching the one proxy hop on Render (verify this once; see below) |
@@ -703,6 +718,7 @@ written to Git):
 **Web app service:**
 
 | Variable | Value |
+
 |---|---|
 | `VITE_API_URL` | The API's `https://` address. **This is embedded when the app is built**, so changing it requires a rebuild (a manual deploy). |
 
@@ -791,6 +807,7 @@ check each provider's current terms.
 ## Troubleshooting
 
 | Symptom | Likely cause and fix |
+
 |---|---|
 | `password authentication failed` | The password in `DATABASE_URL` doesn't match your PostgreSQL user. Check it with `psql`, then restart the server. |
 | `client password must be a string` | `DATABASE_URL` is missing from the environment, or lacks a password. Check `.env`'s location (`server/.env`) and name, then restart. |
@@ -840,7 +857,7 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, highlighting items that expire soon, and an accessibility audit.
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, highlighting and sorting items that expire soon, unit conversion, and an accessibility audit.
 
 ## Known limitations
 
@@ -852,13 +869,12 @@ Ideas for what could come next: an error-tracking service, a staging environment
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records presence and an optional expiry date, but no quantities, and has no bulk operations. Items aren't sorted or highlighted by how soon they expire.
+- The pantry records presence, an optional expiry date, and an optional amount (quantity and unit), and has no bulk operations. Units come from a fixed list kept in three places (migration 003, the server schema, `client/src/units.js`) and aren't converted (2 cup and 500 ml are not compared). Items aren't sorted or highlighted by how soon they expire. Recipe search matches titles and missing ingredients only, because the matches API doesn't send the ingredients you already have.
 - Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
-- No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has( `, which need a current browser.
+- No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has(`, which need a current browser.
 - The site runs on the hosting platform's domain, not a custom one.
 
 ## Changelog
 
-Every phase is recorded as a version in [CHANGELOG.md](CHANGELOG.md): what was
-added or changed, how it behaves, how to upgrade, and what's still missing.
+Every phase is recorded as a version in [CHANGELOG.md](CHANGELOG.md): what was added or changed, how it behaves, how to upgrade, and what's still missing.
