@@ -652,6 +652,8 @@ describe('pantry', () => {
 
       assert.equal(mine.status, 200);
       assert.equal(mine.body.length, 3);
+      // Without this, the deepEqual below passes even if neither endpoint sends ingredients.
+      assert.deepEqual(mine.body[0].ingredients, ['butter', 'egg']);
       assert.deepEqual(mine.body, publicResult.body);
     });
 
