@@ -3,6 +3,37 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-08-2026
+### Version 1.5.0: Pantry quantities
+
+Each pantry item can now have an optional amount, a quantity with a unit, shown and
+edited on the Pantry page. The Pantry page was also reworked for big pantries. The
+server part (11B-1) was deployed on 11-07-2026, the web app part (11B-2) on 11-08-2026.
+
+### Added
+
+- **Web app: amounts on the Pantry page.** Each item has a number input
+  (`step="0.001"`), a unit select, Save, and Clear. The status line reads like
+  "6 pieces · expires Nov 10, 2026" or "No amount · No date".
+- **Collapsible rows.** Each item is one line (name, status, **Edit**); opening it shows
+  the date form, the amount form, and **Remove**. Close discards unsaved edits.
+- **Two-step Remove** in the open row: Remove → Confirm remove / Cancel.
+- **Scroll frames:** the pantry list and the recipe results scroll inside a frame past
+  8 items.
+- **Search boxes** on the Pantry page: the pantry by name; recipes by title or a missing
+  ingredient.
+- `updatePantryItem` in `api.js`; `units.js` (`UNITS`, `formatAmount`, `parseQuantity`);
+  `search.js` (`matchesQuery`).
+- **75 web app tests** (238 → 313).
+
+### Changed
+
+- **Pantry page:** the "In your pantry" chips are gone; the item rows are that list now,
+  and removing happens in an open row (or by unticking in the picker). The home page
+  still uses chips.
+- `usePantry` keeps one `details` map (date and amount per item) and stores the whole
+  item the server returns after each save, so saving one field never wipes the other.
+
 ## 11-07-2026
 ### Version 1.5.0: Pantry quantities (in progress)
 
