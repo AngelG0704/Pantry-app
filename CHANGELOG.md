@@ -3,6 +3,49 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-07-2026
+### Version 1.5.0: Pantry quantities (in progress)
+
+Each pantry item can now have an optional amount, a quantity with a unit. This entry
+covers the server part (11B-1); the web app part follows in 11B-2.
+
+### Added
+
+- **Migration `003_pantry_quantity.sql`:** nullable `quantity NUMERIC(10, 3)` and
+  `unit TEXT` on `pantry_items`, with named checks: `quantity > 0`, a unit from
+  `g, kg, ml, l, tsp, tbsp, cup, oz, lb, piece`, and both set or both null. Applied on
+  the 11-07-2026 deploy; Neon was backed up first (`neon-2026-11-07-before-003.dump`).
+- **Amounts in the API:** `GET /api/pantry` items are now
+  `{ id, name, expiresOn, quantity, unit }`. `quantity` is a JSON number or `null`.
+- **36 server tests** (160 → 196), including exact numbers such as `1.005` and
+  `9999999.999`, and every unit sent through the database check.
+
+### Changed
+
+- **`PATCH /api/pantry/:ingredientId` is a partial update.** A key left out is
+  unchanged, `null` clears, and `quantity` and `unit` are sent together:
+
+      { "quantity": 2, "unit": "cup" }
+      { "quantity": null, "unit": null }
+      { "expiresOn": "2026-12-01", "quantity": 6, "unit": "piece" }
+
+  `400` for an empty body, half a pair, a quantity that is ≤ 0, has more than 3 decimal
+  places, is a string, or is 10,000,000 or more, an unknown or wrong-case unit, and any
+  other key. A missing `expiresOn` is no longer an error: it means "leave the date
+  alone". The 1.4.0 web app, which sends only `{ "expiresOn": ... }`, is unaffected.
+
+### Notes
+
+- node-postgres returns `NUMERIC` as a string (`"1.500"`), so the query converts it
+  with `::float8`. At 3 decimal places and under 10 million, every value round-trips
+  exactly.
+- Postgres silently rounds extra decimals (`1.23456` → `1.235`), so the API rejects
+  more than 3 instead. The check reads the number's text, because
+  `1.005 * 1000` is `1004.9999999999999` in floating point.
+- The unit list exists in two places, the zod schema and the migration's check. A test
+  sends every unit through the database, so they can't silently differ. Adding a unit
+  needs a new migration as well as the code change.
+
 ## 11-04-2026
 ### Version 1.4.0: Pantry expiry dates 
 

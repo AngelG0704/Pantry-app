@@ -27,7 +27,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen with expiry dates, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 157 server tests and 238 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated inputCORS allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 196 server tests and 238 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -199,8 +199,10 @@ erDiagram
         int ingredient_id PK
         timestamptz added_at
         date expires_on "nullable"
+        numeric quantity "nullable, > 0"
+        text unit "nullable, fixed list"
     }
-```
+  ```
 
 Recipes and ingredients are many-to-many, as are users and ingredients, so each
 relationship has a join table. Foreign keys, unique constraints, and a check that
@@ -384,11 +386,11 @@ responses are JSON.
 | POST | `/api/auth/register` | none | Create an account |
 | POST | `/api/auth/login` | none | Log in and receive a token |
 | GET | `/api/auth/me` | Bearer | The current user |
-| GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date) |
+| GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date and amount) |
 | POST | `/api/pantry` | Bearer | Add an ingredient to my pantry |
 | DELETE | `/api/pantry/:ingredientId` | Bearer | Remove an ingredient from my pantry |
 | GET | `/api/pantry/matches` | Bearer | Rank recipes against my saved pantry |
-| PATCH | `/api/pantry/:ingredientId` | Bearer | Set or clear an item's expiry date |
+| PATCH | `/api/pantry/:ingredientId` | Bearer | Update an item's expiry date and/or amount (fields left out are unchanged) |
 
 Exact request and response details for each endpoint are in
 [CHANGELOG.md](CHANGELOG.md), under the version that introduced it.
@@ -509,9 +511,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **135 automated tests** and runs against a separate database, so it
-never touches your development data. The web app has **204 tests** that run without
-a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **196 automated tests** and runs against a separate database, so it never touches your development data. The web app has **238 tests** that run withouta server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -559,7 +559,7 @@ npm test -- --test-name-pattern="tampered"
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
 | `matching.test.js` | 20 | Ranking, scoring, missing ingredients, `maxMissing`, input validation |
-| `pantry.test.js` | 54 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items) |
+| `pantry.test.js` | 90 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items), amounts (numbers not strings, partial updates, every unit through the database check, rejected rather than rounded decimals) |
 | `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
 | `security.test.js` | 7 | Headers, CORS allowlist and preflight, body size limit |
 | `rateLimit.test.js` | 8 | Limiter behavior, and which limiter guards which route |
@@ -631,7 +631,7 @@ Two jobs run in parallel, each on a fresh Linux machine:
 
 | Job | What it does |
 |---|---|
-| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 157 tests |
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 196 tests |
 | **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 238 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
@@ -840,7 +840,7 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, and an accessibility audit, Add “pantry quantities", and “highlighting items that expire soon” to the list.
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, highlighting items that expire soon, and an accessibility audit.
 
 ## Known limitations
 
@@ -852,7 +852,8 @@ Ideas for what could come next: an error-tracking service, a staging environment
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records presence and an optional expiry date, but no quantities, and has no bulk operations. Items aren't sorted or highlighted by how soon they expire.- Ingredient names are matched exactly, with no synonyms.
+- The pantry records presence and an optional expiry date, but no quantities, and has no bulk operations. Items aren't sorted or highlighted by how soon they expire.
+- Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
 - No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has( `, which need a current browser.
 - The site runs on the hosting platform's domain, not a custom one.
