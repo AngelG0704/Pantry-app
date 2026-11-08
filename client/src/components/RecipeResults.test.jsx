@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
@@ -109,5 +110,71 @@ describe('RecipeResults', () => {
       .getAllByRole('link')
       .map((link) => link.textContent);
     expect(titles).toEqual(['Cheese omelette', 'Scrambled eggs', 'Mystery bowl']);
+  });
+
+    it('scrolls inside a frame only past scrollAfter recipes', () => {
+    const many = (count) =>
+      Array.from({ length: count }, (_, i) => ({ ...PARTIAL, id: 100 + i, title: `Recipe ${i}` }));
+
+    const { unmount } = renderResults({ status: 'success', data: many(2), scrollAfter: 2 });
+    expect(screen.getByRole('list')).not.toHaveClass('scroll-frame');
+    unmount();
+
+    renderResults({ status: 'success', data: many(3), scrollAfter: 2 });
+    expect(screen.getByRole('list')).toHaveClass('scroll-frame');
+  });
+
+  it('never scrolls without a limit (the home page)', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...PARTIAL, id: 200 + i, title: `R${i}` }));
+    renderResults({ status: 'success', data: many });
+
+    expect(screen.getByRole('list')).not.toHaveClass('scroll-frame');
+  });
+
+    it('has no search box unless asked for one', () => {
+    renderResults({ status: 'success', data: [COMPLETE, PARTIAL] });
+
+    expect(screen.queryByRole('searchbox', { name: 'Search recipes' })).not.toBeInTheDocument();
+  });
+
+  it('filters by title or by a missing ingredient', async () => {
+    const user = userEvent.setup();
+    renderResults({ status: 'success', data: [COMPLETE, PARTIAL, NO_PREP], searchable: true });
+    const search = screen.getByRole('searchbox', { name: 'Search recipes' });
+
+    await user.type(search, 'OMEL');
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Cheese omelette',
+    ]);
+
+    await user.clear(search);
+    await user.type(search, 'salt');
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Mystery bowl',
+    ]);
+
+    await user.clear(search);
+    expect(screen.getAllByRole('link')).toHaveLength(3);
+  });
+
+  it('says so when no recipe matches the search', async () => {
+    const user = userEvent.setup();
+    renderResults({ status: 'success', data: [COMPLETE, PARTIAL], searchable: true });
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search recipes' }), 'pizza');
+
+    expect(screen.getByText('No recipes match “pizza”.')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('counts only the matching recipes toward the scroll frame', async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 5 }, (_, i) => ({ ...PARTIAL, id: 300 + i, title: `Pie ${i}` }));
+    renderResults({ status: 'success', data: [...many, COMPLETE], scrollAfter: 2, searchable: true });
+    expect(screen.getByRole('list')).toHaveClass('scroll-frame');
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search recipes' }), 'scrambled');
+
+    expect(screen.getByRole('list')).not.toHaveClass('scroll-frame');
   });
 });

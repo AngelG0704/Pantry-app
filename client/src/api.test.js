@@ -11,6 +11,7 @@ import {
   getCurrentUser,
   setUnauthorizedHandler,
   setPantryExpiry,
+  updatePantryItem,
 } from './api.js';
 
 const API = 'http://api.test';
@@ -225,6 +226,32 @@ describe('request URLs', () => {
     await setPantryExpiry('my-token', 7, null);
 
     expect(JSON.parse(sent().options.body)).toEqual({ expiresOn: null });
+  });
+
+  it('updates an amount with PATCH, sending only the given fields', async () => {
+    const item = { id: 7, name: 'egg', expiresOn: '2026-11-10', quantity: 6, unit: 'piece' };
+    fetchMock.mockResolvedValueOnce(jsonResponse(item));
+
+    const result = await updatePantryItem('my-token', 7, { quantity: 6, unit: 'piece' });
+
+    const { url, options } = sent();
+    expect(url).toBe(`${API}/api/pantry/7`);
+    expect(options.method).toBe('PATCH');
+    expect(options.headers.Authorization).toBe('Bearer my-token');
+    expect(JSON.parse(options.body)).toEqual({ quantity: 6, unit: 'piece' });
+    expect(result).toEqual(item);
+  });
+
+  it('sends a quantity as a JSON number, and a cleared amount as two nulls', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({}));
+
+    await updatePantryItem('my-token', 7, { quantity: 1.5, unit: 'cup' });
+    expect(fetchMock.mock.calls[0][1].body).toBe('{"quantity":1.5,"unit":"cup"}');
+
+    await updatePantryItem('my-token', 7, { quantity: null, unit: null });
+    expect(fetchMock.mock.calls[1][1].body).toBe('{"quantity":null,"unit":null}');
   });
 
   it('adds no query string to pantry matches when maxMissing is empty', async () => {

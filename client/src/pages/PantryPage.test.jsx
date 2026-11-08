@@ -4,11 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import PantryPage from './PantryPage.jsx';
 import { useAuth } from '../auth/useAuth.js';
-import { addToPantry, 
-        getMyMatches, 
-        getPantry, 
+import { addToPantry,
+        getMyMatches,
+        getPantry,
         removeFromPantry,
-        setPantryExpiry 
+        setPantryExpiry,
+        updatePantryItem,
 } from '../api.js';
 
 vi.mock('../api.js', () => ({
@@ -16,6 +17,7 @@ vi.mock('../api.js', () => ({
   addToPantry: vi.fn(),
   removeFromPantry: vi.fn(),
   setPantryExpiry: vi.fn(),
+  updatePantryItem: vi.fn(),
   getMyMatches: vi.fn(),
 }));
 vi.mock('../auth/useAuth.js', () => ({ useAuth: vi.fn() }));
@@ -52,12 +54,18 @@ function renderPantry({ catalog = catalogState() } = {}) {
   );
 }
 
-// The chips under "In your pantry", as plain text: 'egg×'.
-const chips = () =>
-  within(screen.getByRole('list', { name: 'Selected ingredients' }))
+// The names in the "In your pantry" list, in the order shown: ['egg', 'butter'].
+const pantryNames = () =>
+  within(screen.getByRole('list', { name: 'In your pantry' }))
     .getAllByRole('listitem')
-    .map((li) => li.textContent);
+    .map((li) => li.querySelector('.expiry-name').textContent);
 
+// Open an item's row, then remove it with the two-step button.
+async function removeViaRow(user, name) {
+  await user.click(screen.getByRole('button', { name: `Edit ${name}` }));
+  await user.click(screen.getByRole('button', { name: `Remove ${name} from pantry` }));
+  await user.click(screen.getByRole('button', { name: `Confirm removing ${name}` }));
+}
 const box = (name) => screen.getByRole('checkbox', { name });
 
 async function renderReady({ pantry = [EGG], matches = [TOAST] } = {}) {
@@ -131,7 +139,7 @@ describe('PantryPage: loading', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByRole('heading', { name: 'In your pantry' })).toBeInTheDocument();
-    expect(chips()).toEqual(['egg×']);
+    expect(pantryNames()).toEqual(['egg']);
     expect(getPantry).toHaveBeenCalledTimes(2);
   });
 });
@@ -150,7 +158,7 @@ describe('PantryPage: showing the saved pantry', () => {
   it('lists the saved ingredients as chips and ticks them in the picker', async () => {
     await renderReady({ pantry: [BUTTER, EGG] });
 
-    expect(chips()).toEqual(['egg×', 'butter×']);
+    expect(pantryNames()).toEqual(['egg', 'butter']);
     expect(box('egg')).toBeChecked();
     expect(box('butter')).toBeChecked();
     expect(box('bread')).not.toBeChecked();
@@ -162,14 +170,14 @@ describe('PantryPage: showing the saved pantry', () => {
   it('shows chips in catalog order, not in the order the server listed them', async () => {
     await renderReady({ pantry: [BREAD, EGG] });
 
-    expect(chips()).toEqual(['egg×', 'bread×']);
+    expect(pantryNames()).toEqual(['egg', 'bread']);
   });
 
   it('shows a pantry-specific message when the pantry is empty', async () => {
     await renderReady({ pantry: [] });
 
     expect(screen.getByText('Your pantry is empty. Tick some ingredients below.')).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Selected ingredients' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'In your pantry' })).not.toBeInTheDocument();
   });
 
   it('has no "Clear all" button: removing is one ingredient at a time', async () => {
@@ -199,7 +207,7 @@ describe('PantryPage: matches against the saved pantry', () => {
       'Could not find recipes: Something went wrong.'
     );
     expect(box('egg')).toBeEnabled();
-    expect(chips()).toEqual(['egg×']);
+    expect(pantryNames()).toEqual(['egg']);
   });
 
   it('asks again with the new limit when "missing ingredients" changes', async () => {
@@ -230,19 +238,19 @@ describe('PantryPage: changing the pantry', () => {
     await user.click(box('butter'));
 
     expect(addToPantry).toHaveBeenCalledWith('tok', 2);
-    expect(chips()).toEqual(['egg×', 'butter×']);
+    expect(pantryNames()).toEqual(['egg', 'butter']);
     await waitFor(() => expect(getMyMatches).toHaveBeenCalledTimes(2));
   });
 
-  it('removes an ingredient with its chip button and refreshes the matches', async () => {
+  it('removes an ingredient from its open row and refreshes the matches', async () => {
     removeFromPantry.mockResolvedValue(null);
     await renderReady({ pantry: [EGG, BUTTER] });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Remove egg' }));
+    await removeViaRow(user, 'egg');
 
     expect(removeFromPantry).toHaveBeenCalledWith('tok', 1);
-    expect(chips()).toEqual(['butter×']);
+    expect(pantryNames()).toEqual(['butter']);
     expect(box('egg')).not.toBeChecked();
     await waitFor(() => expect(getMyMatches).toHaveBeenCalledTimes(2));
   });
@@ -257,7 +265,7 @@ describe('PantryPage: changing the pantry', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not update your pantry: Unknown ingredient'
     );
-    expect(chips()).toEqual(['egg×']);
+    expect(pantryNames()).toEqual(['egg']);
     expect(box('butter')).not.toBeChecked();
     expect(box('butter')).toBeEnabled();
     expect(getMyMatches).toHaveBeenCalledTimes(1);
@@ -283,14 +291,14 @@ describe('PantryPage: expiry dates', () => {
 
   // One row of the "Expiry dates" list, found by the ingredient's name.
   const expiryRow = (name) =>
-    within(screen.getByRole('list', { name: 'Expiry dates' }))
+    within(screen.getByRole('list', { name: 'In your pantry' }))
       .getByText(name)
       .closest('li');
 
   it('shows each saved date from the server, or "No date"', async () => {
     await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
 
-    expect(screen.getByRole('heading', { name: 'Expiry dates' })).toBeInTheDocument();
+    expect(screen.getByRole('heading',{ name: 'In your pantry' })).toBeInTheDocument();
     expect(expiryRow('egg')).toHaveTextContent('expires Nov 10, 2026');
     expect(expiryRow('butter')).toHaveTextContent('No date');
   });
@@ -299,7 +307,8 @@ describe('PantryPage: expiry dates', () => {
     setPantryExpiry.mockResolvedValue({ id: 2, name: 'butter', expiresOn: '2026-12-01' });
     await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
     const user = userEvent.setup();
-
+    
+    await user.click(screen.getByRole('button', { name: 'Edit butter' }));
     await user.type(screen.getByLabelText('Expiry date for butter'), '2026-12-01');
     await user.click(screen.getByRole('button', { name: 'Save expiry date for butter' }));
 
@@ -313,6 +322,7 @@ describe('PantryPage: expiry dates', () => {
     await renderReady({ pantry: [DATED_EGG] });
     const user = userEvent.setup();
 
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
     await user.click(screen.getByRole('button', { name: 'Clear expiry date for egg' }));
 
     expect(setPantryExpiry).toHaveBeenCalledWith('tok', 1, null);
@@ -325,6 +335,7 @@ describe('PantryPage: expiry dates', () => {
     await renderReady({ pantry: [DATED_EGG] });
     const user = userEvent.setup();
 
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
     await user.clear(screen.getByLabelText('Expiry date for egg'));
     await user.type(screen.getByLabelText('Expiry date for egg'), '2026-12-01');
     await user.click(screen.getByRole('button', { name: 'Save expiry date for egg' }));
@@ -350,16 +361,162 @@ describe('PantryPage: expiry dates', () => {
     await renderReady({ pantry: [DATED_EGG, UNDATED_BUTTER] });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Remove egg' }));
-
+    await removeViaRow(user, 'egg');
+    
     expect(
-      within(screen.getByRole('list', { name: 'Expiry dates' })).queryByText('egg')
+      within(screen.getByRole('list', { name: 'In your pantry' })).queryByText('egg')
     ).not.toBeInTheDocument();
   });
 
-  it('shows no expiry section for an empty pantry', async () => {
+  it('shows no item list for an empty pantry', async () => {
     await renderReady({ pantry: [] });
 
-    expect(screen.queryByRole('heading', { name: 'Expiry dates' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'In your pantry' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PantryPage: amounts', () => {
+  const FULL_EGG = { ...EGG, expiresOn: '2026-11-10', quantity: 6, unit: 'piece' };
+  const BARE_BUTTER = { ...BUTTER, expiresOn: null, quantity: null, unit: null };
+
+  const detailsRow = (name) =>
+    within(screen.getByRole('list', { name: 'In your pantry' }))
+      .getByText(name)
+      .closest('li');
+
+  it('shows each saved amount from the server, with the date', async () => {
+    await renderReady({ pantry: [FULL_EGG, BARE_BUTTER] });
+
+    expect(detailsRow('egg')).toHaveTextContent('6 pieces · expires Nov 10, 2026');
+    expect(detailsRow('butter')).toHaveTextContent('No amount · No date');
+  });
+
+  it('saves an amount, sends only the amount, and shows what the server returned', async () => {
+    updatePantryItem.mockResolvedValue({ ...BARE_BUTTER, quantity: 1.5, unit: 'cup' });
+    await renderReady({ pantry: [FULL_EGG, BARE_BUTTER] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit butter' }));
+    await user.type(screen.getByLabelText('Quantity for butter'), '1.5');
+    await user.selectOptions(screen.getByLabelText('Unit for butter'), 'cup');
+    await user.click(screen.getByRole('button', { name: 'Save amount for butter' }));
+
+    expect(updatePantryItem).toHaveBeenCalledWith('tok', 2, { quantity: 1.5, unit: 'cup' });
+    expect(await within(detailsRow('butter')).findByText('1.5 cup')).toBeInTheDocument();
+    expect(detailsRow('butter')).toHaveTextContent('1.5 cup · No date');
+    expect(getMyMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears an amount and keeps the date', async () => {
+    updatePantryItem.mockResolvedValue({ ...FULL_EGG, quantity: null, unit: null });
+    await renderReady({ pantry: [FULL_EGG] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
+    await user.click(screen.getByRole('button', { name: 'Clear amount for egg' }));
+
+    expect(updatePantryItem).toHaveBeenCalledWith('tok', 1, { quantity: null, unit: null });
+    expect(await within(detailsRow('egg')).findByText('No amount')).toBeInTheDocument();
+    expect(detailsRow('egg')).toHaveTextContent('No amount · expires Nov 10, 2026');
+  });
+
+  it('keeps the amount when the date is saved', async () => {
+    setPantryExpiry.mockResolvedValue({ ...FULL_EGG, expiresOn: '2026-12-01' });
+    await renderReady({ pantry: [FULL_EGG] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
+    await user.clear(screen.getByLabelText('Expiry date for egg'));
+    await user.type(screen.getByLabelText('Expiry date for egg'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Save expiry date for egg' }));
+
+    expect(
+      await within(detailsRow('egg')).findByText('expires Dec 1, 2026')
+    ).toBeInTheDocument();
+    expect(detailsRow('egg')).toHaveTextContent('6 pieces · expires Dec 1, 2026');
+  });
+
+  it('explains a rejected amount and keeps the old one', async () => {
+    updatePantryItem.mockRejectedValue(
+      apiError('unit must be one of g, kg, ml, l, tsp, tbsp, cup, oz, lb, piece, or null', 400)
+    );
+    await renderReady({ pantry: [FULL_EGG] });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
+    await user.selectOptions(screen.getByLabelText('Unit for egg'), 'g');
+    await user.click(screen.getByRole('button', { name: 'Save amount for egg' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not update your pantry: unit must be one of'
+    );
+    expect(detailsRow('egg')).toHaveTextContent('6 pieces');
+  });
+});
+
+describe('PantryPage: long lists', () => {
+  it('puts more than 8 recipes in a scrolling frame', async () => {
+    const recipes = Array.from({ length: 9 }, (_, i) => ({ ...TOAST, id: 100 + i, title: `Toast ${i}` }));
+    await renderReady({ matches: recipes });
+
+    const results = (await screen.findByText('Toast 8')).closest('ul');
+    expect(results).toHaveClass('scroll-frame');
+  });
+
+  it('keeps up to 8 recipes as a plain list', async () => {
+    const recipes = Array.from({ length: 8 }, (_, i) => ({ ...TOAST, id: 100 + i, title: `Toast ${i}` }));
+    await renderReady({ matches: recipes });
+
+    const results = (await screen.findByText('Toast 7')).closest('ul');
+    expect(results).not.toHaveClass('scroll-frame');
+  });
+});
+
+describe('PantryPage: searching', () => {
+  it('filters the pantry list by name, ignoring case', async () => {
+    await renderReady({ pantry: [EGG, BUTTER, BREAD] });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search your pantry' }), 'BU');
+
+    expect(pantryNames()).toEqual(['butter']);
+  });
+
+  it('says so when nothing in the pantry matches, and shows everything again when cleared', async () => {
+    await renderReady({ pantry: [EGG, BUTTER] });
+    const user = userEvent.setup();
+    const search = screen.getByRole('searchbox', { name: 'Search your pantry' });
+
+    await user.type(search, 'milk');
+    expect(screen.getByText('No pantry items match “milk”.')).toBeInTheDocument();
+
+    await user.clear(search);
+    expect(pantryNames()).toEqual(['egg', 'butter']);
+  });
+
+  it('shows no pantry search for an empty pantry', async () => {
+    await renderReady({ pantry: [] });
+
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search your pantry' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('only filters what is shown: the ingredient picker still lists everything', async () => {
+    await renderReady({ pantry: [EGG, BUTTER] });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search your pantry' }), 'egg');
+
+    expect(box('butter')).toBeChecked();
+  });
+
+  it('has a recipe search on this page', async () => {
+    await renderReady({ matches: [TOAST] });
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByRole('searchbox', { name: 'Search recipes' }), 'pizza');
+
+    expect(screen.getByText('No recipes match “pizza”.')).toBeInTheDocument();
   });
 });

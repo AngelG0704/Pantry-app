@@ -117,12 +117,17 @@ export function removeFromPantry(token, ingredientId) {
   });
 }
 
-export function setPantryExpiry(token, ingredientId, expiresOn) {
+// { expiresOn }, { quantity, unit }, or all three; null clears.
+export function updatePantryItem(token, ingredientId, changes) {
   return request(`/api/pantry/${encodeURIComponent(ingredientId)}`, {
     method: 'PATCH',
-    body: { expiresOn },
+    body: changes,
     token,
   });
+}
+
+export function setPantryExpiry(token, ingredientId, expiresOn) {
+  return updatePantryItem(token, ingredientId, { expiresOn });
 }
 
 export function getMyMatches(token, { maxMissing = '', signal } = {}) {

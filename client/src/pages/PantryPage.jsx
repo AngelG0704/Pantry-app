@@ -3,10 +3,13 @@ import { useAuth } from '../auth/useAuth.js';
 import { usePantry } from '../hooks/usePantry.js';
 import { useMyMatches } from '../hooks/useMyMatches.js';
 import IngredientPicker from '../components/IngredientPicker.jsx';
-import SelectedIngredients from '../components/SelectedIngredients.jsx';
 import MaxMissingSelect from '../components/MaxMissingSelect.jsx';
 import RecipeResults from '../components/RecipeResults.jsx';
 import PantryExpiryList from '../components/PantryExpiryList.jsx';
+import { matchesQuery } from '../search.js';
+
+// Both lists on this page scroll inside a frame once they pass this many items.
+const SCROLL_AFTER = 8;
 
 function PantryPage({ search }) {
   const { token } = useAuth();
@@ -14,10 +17,15 @@ function PantryPage({ search }) {
 
   const pantry = usePantry(token);
   const [maxMissing, setMaxMissing] = useState('');
+  const [pantryQuery, setPantryQuery] = useState('');
   const matches = useMyMatches(token, pantry.version, maxMissing);
 
   const inPantry = catalog.data.filter((ingredient) =>
     pantry.ids.includes(ingredient.id)
+  );
+
+  const visiblePantry = inPantry.filter((ingredient) =>
+    matchesQuery(pantryQuery, ingredient.name)
   );
 
   const loading = catalog.status === 'loading' || pantry.status === 'loading';
@@ -54,21 +62,34 @@ function PantryPage({ search }) {
           )}
 
           <h3>In your pantry</h3>
-          <SelectedIngredients
-            ingredients={inPantry}
-            onRemove={pantry.toggle}
-            emptyMessage="Your pantry is empty. Tick some ingredients below."
-          />
-
-          {inPantry.length > 0 && (
+          {inPantry.length === 0 ? (
+            <p className="status">Your pantry is empty. Tick some ingredients below.</p>
+          ) : (
             <>
-            <h3>Expiry dates</h3>
-              <PantryExpiryList
-                items={inPantry}
-                expiry={pantry.expiry}
-                pendingIds={pantry.pendingIds}
-                onSave={pantry.setExpiry}
-              />
+              <div className="list-search">
+                <label htmlFor="pantry-search">Search your pantry</label>
+                <input
+                  id="pantry-search"
+                  type="search"
+                  value={pantryQuery}
+                  onChange={(event) => setPantryQuery(event.target.value)}
+                  placeholder="e.g. egg"
+                />
+              </div>
+              {visiblePantry.length === 0 ? (
+                <p className="status">No pantry items match &ldquo;{pantryQuery}&rdquo;.</p>
+              ) : (
+                <PantryExpiryList
+                  items={visiblePantry}
+                  expiry={pantry.expiry}
+                  details={pantry.details}
+                  pendingIds={pantry.pendingIds}
+                  onSave={pantry.setExpiry}
+                  onSaveAmount={pantry.updateItem}
+                  onRemove={pantry.toggle}
+                  scrollAfter={SCROLL_AFTER}
+                />
+              )}
             </>
           )}
 
@@ -92,6 +113,8 @@ function PantryPage({ search }) {
             status={matches.status}
             data={matches.data}
             error={matches.error}
+            scrollAfter={SCROLL_AFTER}
+            searchable
           />
         </>
       )}

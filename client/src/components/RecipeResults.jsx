@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router";
+import { matchesQuery } from "../search.js";
 
 function RecipeCard({ recipe }) {
   const { title, prepMinutes, matchedCount, totalCount, missingIngredients } = recipe;
@@ -26,10 +28,19 @@ function RecipeCard({ recipe }) {
   );
 }
 
-function RecipeResults({ status, data, error }) {
+// scrollAfter: past this many recipes the list scrolls inside a frame (the Pantry page uses 8).
+// searchable: show a box that filters by title or by a missing ingredient (Pantry page only).
+function RecipeResults({ status, data, error, scrollAfter = Infinity, searchable = false }) {
+  const [query, setQuery] = useState('');
+
   if (status === 'idle') {
     return null;
   }
+
+  const visible =
+    status === 'success'
+      ? data.filter((recipe) => matchesQuery(query, recipe.title, ...recipe.missingIngredients))
+      : [];
 
   return (
     <section aria-labelledby="results-heading" aria-live="polite">
@@ -41,18 +52,37 @@ function RecipeResults({ status, data, error }) {
         <p role="alert">Could not find recipes: {error}</p>
       )}
 
-      {status === 'success' &&
-        (data.length === 0 ? (
-          <p className="status">No recipes match those ingredients yet. Try adding more.</p>
-        ) : (
-          <ul className="results">
-            {data.map((recipe) => (
-              <RecipeCard key={recipe.id} recipe={recipe} />
-            ))}
-          </ul>
-        ))}
+      {status === 'success' && data.length === 0 && (
+        <p className="status">No recipes match those ingredients yet. Try adding more.</p>
+      )}
+
+      {status === 'success' && data.length > 0 && (
+        <>
+          {searchable && (
+            <div className="list-search">
+              <label htmlFor="recipe-search">Search recipes</label>
+              <input
+                id="recipe-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="e.g. toast or cheese"
+              />
+            </div>
+          )}
+
+          {visible.length === 0 ? (
+            <p className="status">No recipes match &ldquo;{query}&rdquo;.</p>
+          ) : (
+            <ul className={visible.length > scrollAfter ? 'results scroll-frame' : 'results'}>
+              {visible.map((recipe) => (
+                <RecipeCard key={recipe.id} recipe={recipe} />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </section>
   );
 }
-
 export default RecipeResults;
