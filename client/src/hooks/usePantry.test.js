@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { usePantry } from './usePantry.js';
-import { addToPantry, getPantry, removeFromPantry, setPantryExpiry } from '../api.js';
+import {
+  addToPantry,
+  getPantry,
+  removeFromPantry,
+  setPantryExpiry,
+  updatePantryItem,
+} from '../api.js';
 
 vi.mock('../api.js', () => ({
   getPantry: vi.fn(),
   addToPantry: vi.fn(),
   removeFromPantry: vi.fn(),
   setPantryExpiry: vi.fn(),
+  updatePantryItem: vi.fn(),
 }));
 
 const EGG = { id: 1, name: 'egg' };
@@ -372,4 +379,141 @@ describe('usePantry: expiry dates', () => {
     expect(result.current.expiry[1]).toBe('2026-11-10');
   });
 });
+});
+
+describe('usePantry: item details (amounts)', () => {
+  const FULL_EGG = { ...EGG, expiresOn: '2026-11-10', quantity: 6, unit: 'piece' };
+
+  async function updateAndWait(result, id, changes) {
+    let saved;
+    await act(async () => {
+      saved = await result.current.updateItem(id, changes);
+    });
+    return saved;
+  }
+
+  it('fills every detail from the server, with missing fields as null', async () => {
+    const { result } = await renderLoaded([FULL_EGG, BUTTER]);
+
+    expect(result.current.details).toEqual({
+      1: { expiresOn: '2026-11-10', quantity: 6, unit: 'piece' },
+      2: { expiresOn: null, quantity: null, unit: null },
+    });
+  });
+
+  it('sends only the given fields, waits, then keeps the whole item the server returned', async () => {
+    const request = deferred();
+    updatePantryItem.mockReturnValue(request.promise);
+    const { result } = await renderLoaded([{ ...EGG, expiresOn: '2026-11-10' }]);
+
+    let finished;
+    await act(async () => {
+      finished = result.current.updateItem(1, { quantity: 1.5, unit: 'cup' });
+    });
+
+    expect(updatePantryItem).toHaveBeenCalledWith('tok', 1, { quantity: 1.5, unit: 'cup' });
+    expect(result.current.pendingIds).toEqual([1]);
+    expect(result.current.details[1].quantity).toBe(null);
+
+    let saved;
+    await act(async () => {
+      request.resolve({ id: 1, name: 'egg', expiresOn: '2026-11-10', quantity: 1.5, unit: 'cup' });
+      saved = await finished;
+    });
+
+    expect(saved).toBe(true);
+    expect(result.current.details[1]).toEqual({
+      expiresOn: '2026-11-10',
+      quantity: 1.5,
+      unit: 'cup',
+    });
+    expect(result.current.pendingIds).toEqual([]);
+    expect(result.current.version).toBe(0);
+  });
+
+  it('clears the amount and keeps the date, as the server reports', async () => {
+    updatePantryItem.mockResolvedValue({
+      id: 1,
+      name: 'egg',
+      expiresOn: '2026-11-10',
+      quantity: null,
+      unit: null,
+    });
+    const { result } = await renderLoaded([FULL_EGG]);
+
+    await updateAndWait(result, 1, { quantity: null, unit: null });
+
+    expect(result.current.details[1]).toEqual({
+      expiresOn: '2026-11-10',
+      quantity: null,
+      unit: null,
+    });
+    expect(result.current.expiry[1]).toBe('2026-11-10');
+  });
+
+  it('keeps the old details and shows the error when saving fails', async () => {
+    updatePantryItem.mockRejectedValue(
+      apiError('quantity must be a positive number with at most 3 decimal places, or null', 400)
+    );
+    const { result } = await renderLoaded([FULL_EGG]);
+
+    const saved = await updateAndWait(result, 1, { quantity: 2, unit: 'cup' });
+
+    expect(saved).toBe(false);
+    expect(result.current.details[1]).toEqual({
+      expiresOn: '2026-11-10',
+      quantity: 6,
+      unit: 'piece',
+    });
+    expect(result.current.actionError).toBe(
+      'quantity must be a positive number with at most 3 decimal places, or null'
+    );
+  });
+
+  it('does not save an amount while that item is being removed', async () => {
+    const removal = deferred();
+    removeFromPantry.mockReturnValue(removal.promise);
+    const { result } = await renderLoaded([FULL_EGG]);
+
+    const started = await startToggle(result, 1);
+    const saved = await updateAndWait(result, 1, { quantity: 2, unit: 'cup' });
+
+    expect(saved).toBe(false);
+    expect(updatePantryItem).not.toHaveBeenCalled();
+
+    await act(async () => {
+      removal.resolve(null);
+      await started.finished;
+    });
+  });
+
+  it('forgets the amount when the item is removed', async () => {
+    removeFromPantry.mockResolvedValue(null);
+    const { result } = await renderLoaded([FULL_EGG]);
+
+    await toggleAndWait(result, 1);
+
+    expect(result.current.details).not.toHaveProperty('1');
+  });
+
+  it('keeps the amount when a date is saved (the server returns both)', async () => {
+    setPantryExpiry.mockResolvedValue({
+      id: 1,
+      name: 'egg',
+      expiresOn: '2026-12-01',
+      quantity: 6,
+      unit: 'piece',
+    });
+    const { result } = await renderLoaded([FULL_EGG]);
+
+    await act(async () => {
+      await result.current.setExpiry(1, '2026-12-01');
+    });
+
+    expect(result.current.details[1]).toEqual({
+      expiresOn: '2026-12-01',
+      quantity: 6,
+      unit: 'piece',
+    });
+  });
 });

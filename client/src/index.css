@@ -684,3 +684,85 @@ progress::-moz-progress-bar {
   background: var(--color-surface);
   border-color: var(--color-border-strong);
 }
+
+/* ===== Amounts (11B-2) ===== */
+/* Two small forms per row: they share a line under the name, and wrap on narrow screens. */
+.expiry-forms {
+  flex-basis: 100%;             /* always start on the line below the name and status */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.expiry-form input[type="number"],
+.expiry-form select {
+  padding: var(--space-1) var(--space-2);
+}
+
+.expiry-form input[type="number"] {
+  width: 7rem;                  /* room for 9999999.999 */
+}
+
+/* Save and Clear wrap as a pair, never one button alone on a line. */
+.expiry-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Collapsed rows: the Edit/Close toggle sits at the right end of the name line. */
+.expiry-toggle {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.expiry-toggle[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ===== Long lists (11B-2) ===== */
+/* Past 8 items (SCROLL_AFTER on the Pantry page) a list scrolls inside its own frame.
+   The cap on viewport height keeps the frame from being taller than the screen. */
+.scroll-frame {
+  overflow-y: auto;
+  overscroll-behavior: contain;  /* reaching the end doesn't start scrolling the page */
+}
+
+.expiry-list.scroll-frame {
+  max-height: min(24rem, 60vh);  /* about 8 collapsed rows */
+}
+
+.results.scroll-frame {
+  max-height: min(40rem, 70vh);
+  padding-right: var(--space-2); /* keep cards clear of the scrollbar */
+}
+
+/* Remove sits at the far end of an open row, apart from Save and Clear. */
+.expiry-remove-group {
+  margin-left: auto;
+}
+
+.expiry-remove-group button {
+  padding: var(--space-1) var(--space-3);  /* same compact size as the forms' buttons */
+}
+
+.expiry-remove {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.expiry-remove-confirm {
+  color: var(--color-surface);
+  background: var(--color-danger);
+}
+
+/* ===== List search boxes (11B-2) ===== */
+/* Same look as the ingredient picker's search; a little space before the list it filters. */
+.list-search {
+  margin-bottom: var(--space-3);
+}
+
+.list-search input[type="search"] {
+  display: block;
+}
