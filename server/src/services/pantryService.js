@@ -5,7 +5,8 @@ import pool from '../db/pool.js';
 const ITEM_COLUMNS = `i.id, i.name,
        to_char(p.expires_on, 'YYYY-MM-DD') AS "expiresOn",
        p.quantity::float8 AS quantity,
-       p.unit`;
+       p.unit,
+       p.added_at AS "addedAt"`;
 
 export async function listPantry(userId) {
     const result = await pool.query(

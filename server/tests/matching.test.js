@@ -57,6 +57,40 @@ describe('GET /api/recipes/match', () => {
     }
   });
 
+  it('lists every ingredient of each recipe, alphabetically', async () => {
+    const res = await api.get(`/api/recipes/match?${eggAndButter()}`);
+
+    assert.deepEqual(
+      res.body.map((recipe) => recipe.ingredients),
+      [
+        ['butter', 'egg'],
+        ['butter', 'cheese', 'egg'],
+        ['bread', 'butter', 'cheese'],
+      ]
+    );
+  });
+
+it('splits ingredients into the ones you have and the ones you are missing', async () => {
+    const res = await api.get(`/api/recipes/match?${eggAndButter()}`);
+
+    for (const recipe of res.body) {
+      const have = recipe.ingredients.filter(
+        (name) => !recipe.missingIngredients.includes(name)
+      );
+
+      assert.equal(recipe.ingredients.length, recipe.totalCount);
+      assert.equal(have.length, recipe.matchedCount);
+      assert.ok(
+        recipe.missingIngredients.every((name) => recipe.ingredients.includes(name)),
+        `${recipe.title}: a missing ingredient is not in ingredients`
+      );
+      assert.ok(
+        have.every((name) => ['butter', 'egg'].includes(name)),
+        `${recipe.title}: "have" holds something that was not requested`
+      );
+    }
+  });
+
   it('leaves out recipes that share no ingredient with the request', async () => {
     const res = await api.get(`/api/recipes/match?${eggAndButter()}`);
 

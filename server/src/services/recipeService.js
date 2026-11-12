@@ -37,6 +37,7 @@ function buildMatchQuery(haveSource) {
            COUNT(*)::int AS total_count,
            COUNT(have.ingredient_id)::int AS matched_count,
            ROUND(COUNT(have.ingredient_id)::numeric / COUNT(*), 2)::float AS match_score,
+           ARRAY_AGG(i.name ORDER BY i.name) AS ingredients,
            COALESCE(
              ARRAY_AGG(i.name ORDER BY i.name)
                FILTER (WHERE have.ingredient_id IS NULL),
@@ -64,7 +65,8 @@ function toMatch(row) {
     matchedCount: row.matched_count,
     totalCount: row.total_count,
     matchScore: row.match_score,
-    missingIngredients: row.missing_ingredients
+    missingIngredients: row.missing_ingredients,
+    ingredients: row.ingredients,
     }
 }
 

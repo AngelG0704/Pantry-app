@@ -56,6 +56,18 @@ describe('pantry', () => {
 
   const names = (res) => res.body.map((item) => item.name);
 
+  
+  // A TIMESTAMPTZ is a moment, not a calendar day, so it travels as a full ISO string in UTC.
+  const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+  // addedAt is "now", so a test can't spell out its value. Check its format here,
+  // then hand back the rest of the item for an exact deepEqual.
+  const withoutAddedAt = (item) => {
+    assert.match(item.addedAt, ISO_UTC);
+    const { addedAt: _addedAt, ...rest } = item;
+    return rest;
+  };
+
   describe('authentication', () => {
     const protectedRoutes = [
       ['GET', '/api/pantry'],
@@ -90,7 +102,7 @@ describe('pantry', () => {
       const res = await listPantry(alice);
 
       assert.equal(res.status, 200);
-      assert.deepEqual(res.body, [
+      assert.deepEqual(res.body.map(withoutAddedAt), [
         { id: ids.butter, name: 'butter', expiresOn: null, quantity: null, unit: null },
         { id: ids.egg, name: 'egg', expiresOn: null, quantity: null, unit: null },
       ]);
@@ -209,7 +221,7 @@ describe('pantry', () => {
       const res = await setExpiry(alice, ids.egg, { expiresOn: '2026-11-10' });
 
       assert.equal(res.status, 200);
-      assert.deepEqual(res.body, {
+      assert.deepEqual(withoutAddedAt(res.body), {
         id: ids.egg,
         name: 'egg',
         expiresOn: '2026-11-10',
@@ -325,7 +337,7 @@ describe('pantry', () => {
       const res = await patchItem(alice, ids.egg, { quantity: 6, unit: 'piece' });
 
       assert.equal(res.status, 200);
-      assert.deepEqual(res.body, {
+      assert.deepEqual(withoutAddedAt(res.body), {
         id: ids.egg,
         name: 'egg',
         expiresOn: null,
@@ -392,7 +404,7 @@ describe('pantry', () => {
       });
 
       assert.equal(res.status, 200);
-      assert.deepEqual(await itemOf(alice, ids.egg), {
+      assert.deepEqual(withoutAddedAt(await itemOf(alice, ids.egg)), {        
         id: ids.egg,
         name: 'egg',
         expiresOn: '2026-12-01',
@@ -473,6 +485,67 @@ describe('pantry', () => {
         assert.deepEqual(await itemOf(alice, ids.egg), before);
       });
     }
+  });
+
+  describe('addedAt', () => {
+    // Tests pin added_at directly so they never depend on the clock.
+    const setAddedAt = (session, ingredientId, moment) =>
+      pool.query(
+        'UPDATE pantry_items SET added_at = $3 WHERE user_id = $1 AND ingredient_id = $2',
+        [session.user.id, ingredientId, moment]
+      );
+
+    it('lists addedAt as an ISO timestamp string from just now', async () => {
+      const startedAt = Date.now();
+      await addToPantry(alice, ids.egg);
+
+      const { addedAt } = await itemOf(alice, ids.egg);
+
+      assert.equal(typeof addedAt, 'string');
+      assert.match(addedAt, ISO_UTC);
+      const ms = Date.parse(addedAt);
+      assert.ok(ms >= startedAt - 5000 && ms <= Date.now() + 5000, `addedAt ${addedAt} is not recent`);
+    });
+
+    it('returns the stored moment exactly, converted to UTC', async () => {
+      await addToPantry(alice, ids.egg);
+      // 8:30 pm in New York is already the next day in UTC.
+      await setAddedAt(alice, ids.egg, '2026-11-08 20:30:00-05');
+
+      assert.equal((await itemOf(alice, ids.egg)).addedAt, '2026-11-09T01:30:00.000Z');
+    });
+
+    it('PATCH returns addedAt and does not change it', async () => {
+      await addToPantry(alice, ids.egg);
+      await setAddedAt(alice, ids.egg, '2026-01-01T00:00:00Z');
+
+      const res = await patchItem(alice, ids.egg, { expiresOn: '2026-11-10', quantity: 6, unit: 'piece' });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.addedAt, '2026-01-01T00:00:00.000Z');
+      assert.equal((await itemOf(alice, ids.egg)).addedAt, '2026-01-01T00:00:00.000Z');
+    });
+
+    it('adding the same ingredient again keeps the first addedAt', async () => {
+      await addToPantry(alice, ids.egg);
+      await setAddedAt(alice, ids.egg, '2026-01-01T00:00:00Z');
+
+      await addToPantry(alice, ids.egg);
+
+      assert.equal((await itemOf(alice, ids.egg)).addedAt, '2026-01-01T00:00:00.000Z');
+    });
+
+    it('removing and adding again gives a new addedAt', async () => {
+      await addToPantry(alice, ids.egg);
+      await setAddedAt(alice, ids.egg, '2026-01-01T00:00:00Z');
+
+      await api.delete(`/api/pantry/${ids.egg}`).set(bearer(alice.token));
+      await addToPantry(alice, ids.egg);
+
+      const { addedAt } = await itemOf(alice, ids.egg);
+      assert.match(addedAt, ISO_UTC);
+      assert.notEqual(addedAt, '2026-01-01T00:00:00.000Z');
+    });
   });
 
   describe('ownership', () => {
@@ -579,6 +652,8 @@ describe('pantry', () => {
 
       assert.equal(mine.status, 200);
       assert.equal(mine.body.length, 3);
+      // Without this, the deepEqual below passes even if neither endpoint sends ingredients.
+      assert.deepEqual(mine.body[0].ingredients, ['butter', 'egg']);
       assert.deepEqual(mine.body, publicResult.body);
     });
 
