@@ -19,7 +19,7 @@ export async function addPantryItem(req, res, next) {
         return res.status(400).json({ error: 'Unknown ingredient' });
        }
 
-        res.status(result.created ? 201 : 200).json(result.ingredient);
+        res.status(result.created ? 201 : 200).json(result.item);
     } catch (err) {
         next(err);
     }
