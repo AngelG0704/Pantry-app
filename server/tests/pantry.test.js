@@ -114,9 +114,14 @@ describe('pantry', () => {
       const res = await addToPantry(alice, ids.egg);
 
       assert.equal(res.status, 201);
-      assert.deepEqual(res.body, { id: ids.egg, name: 'egg' });
-      assert.deepEqual(names(await listPantry(alice)), ['egg']);
-    });
+      assert.deepEqual(withoutAddedAt(res.body), {
+        id: ids.egg,
+        name: 'egg',
+        expiresOn: null,
+        quantity: null,
+        unit: null,
+      });
+      assert.deepEqual(res.body, await itemOf(alice, ids.egg));    });
 
     it('is idempotent: adding twice returns 200 and creates no duplicate', async () => {
       const first = await addToPantry(alice, ids.egg);
@@ -124,9 +129,22 @@ describe('pantry', () => {
 
       assert.equal(first.status, 201);
       assert.equal(second.status, 200);
+      assert.deepEqual(second.body, first.body);
       assert.deepEqual(names(await listPantry(alice)), ['egg']);
     });
 
+    it('adding an item that is already there returns it unchanged, with its date and amount', async () => {
+      await addToPantry(alice, ids.egg);
+      await patchItem(alice, ids.egg, { expiresOn: '2026-11-10', quantity: 6, unit: 'piece' });
+      const before = await itemOf(alice, ids.egg);
+
+      const res = await addToPantry(alice, ids.egg);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.expiresOn, '2026-11-10');
+      assert.equal(res.body.quantity, 6);
+      assert.deepEqual(res.body, before);
+    });
     it('ignores a client-supplied owner and uses the token', async () => {
       const res = await api
         .post('/api/pantry')
@@ -556,6 +574,23 @@ describe('pantry', () => {
 
       assert.deepEqual(names(await listPantry(alice)), ['butter', 'egg']);
       assert.deepEqual(names(await listPantry(bob)), ['cheese']);
+    });
+
+    it("returns the caller's own new row when another user already has that ingredient", async () => {
+      // Each user goes first once: which row a query without the user filter would
+      // return depends on how Postgres reads the table, so test both orders.
+        for (const [owner, newcomer] of [[alice, bob], [bob, alice]]) {
+        await pool.query('TRUNCATE pantry_items');
+        await addToPantry(owner, ids.egg);
+        await patchItem(owner, ids.egg, { expiresOn: '2026-11-10', quantity: 6, unit: 'piece' });
+
+        const res = await addToPantry(newcomer, ids.egg);
+
+        assert.equal(res.status, 201);
+        assert.equal(res.body.expiresOn, null);
+        assert.equal(res.body.quantity, null);
+        assert.deepEqual(res.body, await itemOf(newcomer, ids.egg));
+      }
     });
 
     it("does not let one user remove another user's item", async () => {

@@ -36,7 +36,16 @@ export async function addToPantry(userId, ingredientId) {
         [userId, ingredientId]
     );
 
-    return { ingredient: found.rows[0], created: inserted.rowCount === 1 };
+    // Return the whole row, new or already there, in the same shape as GET and PATCH.
+    const item = await pool.query(
+        `SELECT ${ITEM_COLUMNS}
+         FROM pantry_items p
+         JOIN ingredients i ON i.id = p.ingredient_id
+         WHERE p.user_id = $1 AND p.ingredient_id = $2`,
+        [userId, ingredientId]
+    );
+
+    return { item: item.rows[0], created: inserted.rowCount === 1 };
 }
 
 export async function removeFromPantry(userId, ingredientId) {
