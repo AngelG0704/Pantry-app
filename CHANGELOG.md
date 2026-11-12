@@ -3,6 +3,40 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
+## 11-12-2026
+### Version 1.6.0: Expiry-aware pantry (in progress)
+ 
+The pantry learns to sort and highlight by expiry, and recipes learn which of your
+ingredients they use. This entry covers the server part (12A-1, PR #50, deployed on
+11-12-2026); the web app parts follow in 12A-2 to 12A-4. No migration: both new fields
+come from data that was already stored.
+ 
+### Added
+ 
+- **`addedAt` on pantry items.** `GET /api/pantry` and `PATCH /api/pantry/:ingredientId`
+  items are now `{ id, name, expiresOn, quantity, unit, addedAt }`. `addedAt` is the
+  existing `added_at` column as an ISO timestamp in UTC, such as
+  `"2026-11-09T01:30:00.000Z"`. Adding an ingredient that is already there keeps the
+  first `addedAt`; removing it and adding it again gives a new one.
+- **`ingredients` on matches.** Each result from `GET /api/recipes/match` and
+  `GET /api/pantry/matches` now includes every ingredient of the recipe, alphabetically,
+  next to `missingIngredients`. Ranking is unchanged.
+- **7 server tests** (196 → 203).
+### Notes
+ 
+- `added_at` is a `TIMESTAMPTZ`, a moment rather than a calendar day, so it needs no
+  `to_char` like `expires_on` does: node-postgres reads it as a JS Date and JSON writes
+  it in UTC. The alias is quoted (`"addedAt"`); unquoted, Postgres lowercases it to
+  `addedat`.
+- Tests that compare a whole item check `addedAt`'s format and compare the other fields
+  exactly, rather than copying the value from the response, which would accept anything.
+- `ARRAY_AGG` keeps its `ORDER BY`: removing it still passed every test, because the
+  small test data happened to come out sorted, but Postgres guarantees no order without
+  it.
+- "Expires soon" is decided in the browser, not on the server: Render runs in UTC, so
+  the server's "today" turns into tomorrow every evening in New York.
+
+
 ## 11-08-2026
 ### Version 1.5.0: Pantry quantities
 
