@@ -27,7 +27,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen with amounts, expiry dates, and search, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 196 server tests and 313 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 203 server tests and 313 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -148,7 +148,8 @@ pantry-app/
 │   │   │   ├── migrate.js    # the `db:migrate` command
 │   │   │   ├── pool.js       # the shared PostgreSQL connection pool
 │   │   │   ├── seedData.js   # recipes and ingredients
-│   │   │   └── seed.js       # runs the migrations, then loads the data│   │   ├── middleware/       # requireAuth, validate, rateLimiters, requestLogger, errorHandler, notFound
+│   │   │   └── seed.js       # runs the migrations, then loads the data
+│   │   ├── middleware/       # requireAuth, validate, rateLimiters, requestLogger, errorHandler, notFound
 │   │   ├── routes/           # auth, health, ingredients, pantry, recipes
 │   │   ├── services/         # auth, health, token, ingredient, pantry, recipe
 │   │   └── validation/       # zod schemas
@@ -390,14 +391,14 @@ responses are JSON.
 | GET | `/api/health` | none | Readiness: is the database reachable? (`200` or `503`) |
 | GET | `/api/ingredients` | none | List all ingredients |
 | GET | `/api/recipes/:id` | none | One recipe with its ingredient names |
-| GET | `/api/recipes/match` | none | Rank recipes against ingredient ids in the URL |
+| GET | `/api/recipes/match` | none | Rank recipes against ingredient ids in the URL (each with its full and missing ingredient lists) |
 | POST | `/api/auth/register` | none | Create an account |
 | POST | `/api/auth/login` | none | Log in and receive a token |
 | GET | `/api/auth/me` | Bearer | The current user |
-| GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date and amount) |
+| GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date, amount, and when it was added) |
 | POST | `/api/pantry` | Bearer | Add an ingredient to my pantry |
 | DELETE | `/api/pantry/:ingredientId` | Bearer | Remove an ingredient from my pantry |
-| GET | `/api/pantry/matches` | Bearer | Rank recipes against my saved pantry |
+| GET | `/api/pantry/matches` | Bearer | Rank recipes against my saved pantry (same fields as `/api/recipes/match`) |
 | PATCH | `/api/pantry/:ingredientId` | Bearer | Update an item's expiry date and/or amount (fields left out are unchanged) |
 
 Exact request and response details for each endpoint are in
@@ -445,7 +446,8 @@ curl "http://localhost:3000/api/recipes/match?ingredients=1,2&maxMissing=1"
     "matchedCount": 2,
     "totalCount": 2,
     "matchScore": 1,
-    "missingIngredients": []
+    "missingIngredients": [],
+    "ingredients": ["butter", "egg"]
   },
   {
     "id": 5,
@@ -454,7 +456,8 @@ curl "http://localhost:3000/api/recipes/match?ingredients=1,2&maxMissing=1"
     "matchedCount": 2,
     "totalCount": 3,
     "matchScore": 0.67,
-    "missingIngredients": ["cheese"]
+    "missingIngredients": ["cheese"],
+    "ingredients": ["butter", "cheese", "egg"]
   }
 ]
 ```
@@ -508,6 +511,7 @@ the ones you lack with `NULL`. Then:
 - `COUNT(have.ingredient_id)` is how many you have
 - the score is matched divided by total
 - the missing names are collected with `ARRAY_AGG(...) FILTER (WHERE ... IS NULL)`
+- every ingredient name is collected with `ARRAY_AGG(i.name ORDER BY i.name)`, with no filter
 
 Results are ordered by score, then by number of matches, then alphabetically, so
 the order is deterministic. Recipes where you have nothing are excluded, and the
@@ -521,7 +525,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **196 automated tests** and runs against a separate database, so it never touches your development data. The web app has **313 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **203 automated tests** and runs against a separate database, so it never touches your development data. The web app has **313 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -568,8 +572,8 @@ npm test -- --test-name-pattern="tampered"
 |---|---|---|
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
-| `matching.test.js` | 20 | Ranking, scoring, missing ingredients, `maxMissing`, input validation |
-| `pantry.test.js` | 90 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items), amounts (numbers not strings, partial updates, every unit through the database check, rejected rather than rounded decimals) |
+| `matching.test.js` | 22 | Ranking, scoring, missing and full ingredient lists, `maxMissing`, input validation |
+| `pantry.test.js` | 95 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items), amounts (numbers not strings, partial updates, every unit through the database check, rejected rather than rounded decimals), `addedAt` (ISO in UTC, kept on PATCH and re-add, new after remove) |
 | `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
 | `security.test.js` | 7 | Headers, CORS allowlist and preflight, body size limit |
 | `rateLimit.test.js` | 8 | Limiter behavior, and which limiter guards which route |
@@ -645,7 +649,7 @@ Two jobs run in parallel, each on a fresh Linux machine:
 | Job | What it does |
 
 |---|---|
-| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 196 tests |
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 203 tests |
 | **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 313 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
@@ -869,7 +873,7 @@ Ideas for what could come next: an error-tracking service, a staging environment
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records presence, an optional expiry date, and an optional amount (quantity and unit), and has no bulk operations. Units come from a fixed list kept in three places (migration 003, the server schema, `client/src/units.js`) and aren't converted (2 cup and 500 ml are not compared). Items aren't sorted or highlighted by how soon they expire. Recipe search matches titles and missing ingredients only, because the matches API doesn't send the ingredients you already have.
+- The pantry records presence, an optional expiry date, and an optional amount (quantity and unit), and has no bulk operations. Units come from a fixed list kept in three places (migration 003, the server schema, `client/src/units.js`) and aren't converted (2 cup and 500 ml are not compared). Items aren't sorted or highlighted by how soon they expire. Recipe search matches titles and missing ingredients only: the matches API now sends every ingredient, but the web app doesn't use it yet.
 - Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
 - No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has(`, which need a current browser.
