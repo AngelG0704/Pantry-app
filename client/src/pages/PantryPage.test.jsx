@@ -604,13 +604,15 @@ describe('PantryPage: sorting', () => {
     const user = userEvent.setup();
     const search = screen.getByRole('searchbox', { name: 'Search your pantry' });
 
-    await user.selectOptions(sortSelect(), 'Name: Z–A');
+    // The catalog order of the two "b" items is butter, bread; this sort must give the
+    // other order, or an unsorted list would pass the first check by luck.
+    await user.selectOptions(sortSelect(), 'Expiry: latest first');
     await user.type(search, 'b');
-    expect(pantryNames()).toEqual(['butter', 'bread']);
+    expect(pantryNames()).toEqual(['bread', 'butter']);
 
     await user.clear(search);
-    expect(sortSelect()).toHaveValue('name-desc');
-    expect(pantryNames()).toEqual(['milk', 'egg', 'butter', 'bread']);
+    expect(sortSelect()).toHaveValue('expiry-desc');
+    expect(pantryNames()).toEqual(['egg', 'bread', 'milk', 'butter']);
   });
 
   it('keeps the sort control when a search matches nothing', async () => {

@@ -13,6 +13,7 @@
   --color-secondary:  light-dark(#4d6b3c, #a3c48a); /* sage */
   --color-secondary-soft: color-mix(in srgb, var(--color-secondary) 14%, var(--color-surface)); /* "you have this" tint */  
   --color-danger:     light-dark(#b00020, #ff8a80);
+  --color-warning:    light-dark(#8a5300, #f0b45a); /* amber, "use soon": 5.2:1 / 6.3:1 on its 14% tint */
 
   /* Spacing */
   --space-1: 0.25rem;
@@ -765,4 +766,42 @@ progress::-moz-progress-bar {
 
 .list-search input[type="search"] {
   display: block;
+}
+
+/* ===== Expiry badges and sorting (12A-2) ===== */
+/* Each status row or badge sets one accent; the rules below are written once. */
+.expiry-row--soon,
+.expiry-badge--soon {
+  --accent: var(--color-warning);
+}
+
+.expiry-row--expired,
+.expiry-badge--expired {
+  --accent: var(--color-danger);
+}
+
+/* Same look as the alert box: a soft tint and a 4px bar on the left.
+   The row steps into the list's side padding so the tint reaches the card's edges,
+   and pads its content back so names still line up with the other rows. */
+.expiry-list li.expiry-row--soon,
+.expiry-list li.expiry-row--expired {
+  margin-inline: calc(-1 * var(--space-4));
+  padding-inline: calc(var(--space-4) - 4px) var(--space-4);
+  border-left: 4px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--color-surface));
+}
+
+/* The word carries the meaning; the colour only backs it up. */
+.expiry-badge {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--color-surface));
+}
+
+/* "Sort by" sits on its own line under the pantry search box. */
+.list-search select {
+  margin: var(--space-2) 0 0 var(--space-2);
 }
