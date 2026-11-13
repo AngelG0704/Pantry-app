@@ -382,7 +382,13 @@ describe('usePantry: expiry dates', () => {
 });
 
 describe('usePantry: item details (amounts)', () => {
-  const FULL_EGG = { ...EGG, expiresOn: '2026-11-10', quantity: 6, unit: 'piece' };
+  const FULL_EGG = {
+    ...EGG,
+    expiresOn: '2026-11-10',
+    quantity: 6,
+    unit: 'piece',
+    addedAt: '2026-11-01T12:00:00.000Z',
+  };
 
   async function updateAndWait(result, id, changes) {
     let saved;
@@ -396,8 +402,8 @@ describe('usePantry: item details (amounts)', () => {
     const { result } = await renderLoaded([FULL_EGG, BUTTER]);
 
     expect(result.current.details).toEqual({
-      1: { expiresOn: '2026-11-10', quantity: 6, unit: 'piece' },
-      2: { expiresOn: null, quantity: null, unit: null },
+      1: { expiresOn: '2026-11-10', quantity: 6, unit: 'piece', addedAt: '2026-11-01T12:00:00.000Z' },
+      2: { expiresOn: null, quantity: null, unit: null, addedAt: null },
     });
   });
 
@@ -417,7 +423,14 @@ describe('usePantry: item details (amounts)', () => {
 
     let saved;
     await act(async () => {
-      request.resolve({ id: 1, name: 'egg', expiresOn: '2026-11-10', quantity: 1.5, unit: 'cup' });
+      request.resolve({
+        id: 1,
+        name: 'egg',
+        expiresOn: '2026-11-10',
+        quantity: 1.5,
+        unit: 'cup',
+        addedAt: '2026-11-01T12:00:00.000Z',
+      });
       saved = await finished;
     });
 
@@ -426,6 +439,7 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-11-10',
       quantity: 1.5,
       unit: 'cup',
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
     expect(result.current.pendingIds).toEqual([]);
     expect(result.current.version).toBe(0);
@@ -438,6 +452,7 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-11-10',
       quantity: null,
       unit: null,
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
     const { result } = await renderLoaded([FULL_EGG]);
 
@@ -447,6 +462,7 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-11-10',
       quantity: null,
       unit: null,
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
     expect(result.current.expiry[1]).toBe('2026-11-10');
   });
@@ -464,6 +480,7 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-11-10',
       quantity: 6,
       unit: 'piece',
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
     expect(result.current.actionError).toBe(
       'quantity must be a positive number with at most 3 decimal places, or null'
@@ -503,6 +520,7 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-12-01',
       quantity: 6,
       unit: 'piece',
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
     const { result } = await renderLoaded([FULL_EGG]);
 
@@ -514,6 +532,54 @@ describe('usePantry: item details (amounts)', () => {
       expiresOn: '2026-12-01',
       quantity: 6,
       unit: 'piece',
+      addedAt: '2026-11-01T12:00:00.000Z',
     });
+  });
+});
+
+describe('usePantry: addedAt from adding', () => {
+  const NEW_EGG = {
+    ...EGG,
+    expiresOn: null,
+    quantity: null,
+    unit: null,
+    addedAt: '2026-11-12T10:00:00.000Z',
+  };
+
+  it('keeps the whole item the server returns after an add, so a new item has its addedAt', async () => {
+    addToPantry.mockResolvedValue(NEW_EGG);
+    const { result } = await renderLoaded([]);
+
+    await toggleAndWait(result, 1);
+
+    expect(result.current.details[1]).toEqual({
+      expiresOn: null,
+      quantity: null,
+      unit: null,
+      addedAt: '2026-11-12T10:00:00.000Z',
+    });
+  });
+
+  it('takes the new addedAt when an item is removed and added again', async () => {
+    removeFromPantry.mockResolvedValue(null);
+    addToPantry.mockResolvedValue(NEW_EGG);
+    const { result } = await renderLoaded([
+      { ...EGG, expiresOn: '2026-11-10', quantity: 6, unit: 'piece', addedAt: '2026-11-01T12:00:00.000Z' },
+    ]);
+
+    await toggleAndWait(result, 1);
+    await toggleAndWait(result, 1);
+
+    expect(result.current.details[1].addedAt).toBe('2026-11-12T10:00:00.000Z');
+    expect(result.current.details[1].expiresOn).toBe(null);
+  });
+
+  it('creates no details when an add fails', async () => {
+    addToPantry.mockRejectedValue(apiError('Unknown ingredient', 400));
+    const { result } = await renderLoaded([]);
+
+    await toggleAndWait(result, 1);
+
+    expect(result.current.details).not.toHaveProperty('1');
   });
 });
