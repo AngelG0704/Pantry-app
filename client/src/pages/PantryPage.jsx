@@ -7,6 +7,7 @@ import MaxMissingSelect from '../components/MaxMissingSelect.jsx';
 import RecipeResults from '../components/RecipeResults.jsx';
 import PantryExpiryList from '../components/PantryExpiryList.jsx';
 import { matchesQuery } from '../search.js';
+import { todayLocal } from '../dates.js';
 
 // Both lists on this page scroll inside a frame once they pass this many items.
 const SCROLL_AFTER = 8;
@@ -83,6 +84,8 @@ function PantryPage({ search }) {
                   items={visiblePantry}
                   expiry={pantry.expiry}
                   details={pantry.details}
+                  // Read on every render: past midnight it updates on the next re-render only.
+                  today={todayLocal()}
                   pendingIds={pantry.pendingIds}
                   onSave={pantry.setExpiry}
                   onSaveAmount={pantry.updateItem}

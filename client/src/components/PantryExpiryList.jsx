@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatExpiry } from '../dates.js';
+import { expiryStatus, formatExpiry } from '../dates.js';
 import { UNITS, formatAmount, parseQuantity } from '../units.js';
 
 const NO_DETAILS = { expiresOn: null, quantity: null, unit: null };
+
+// The statuses that get a badge (and a row class). 'ok' and 'none' get neither.
+const BADGES = { expired: 'Expired', soon: 'Soon' };
 
 function DateForm({ item, savedDate, pending, onSave }) {
   // What's in the date input. "" means the input is empty.
@@ -158,7 +161,7 @@ function RemoveControl({ item, pending, onRemove }) {
   );
 }
 
-function DetailsRow({ item, savedDate, saved, pending, onSave, onSaveAmount, onRemove }) {
+function DetailsRow({ item, savedDate, saved, today, pending, onSave, onSaveAmount, onRemove }) {
   // Collapsed by default so a big pantry stays one line per item.
   // Closing unmounts the forms, which throws away unsaved drafts (and a pending "Confirm remove").
   const [open, setOpen] = useState(false);
@@ -176,12 +179,20 @@ function DetailsRow({ item, savedDate, saved, pending, onSave, onSaveAmount, onR
   const amountText =
     saved.quantity === null ? 'No amount' : formatAmount(saved.quantity, saved.unit);
   const dateText = savedDate ? `expires ${formatExpiry(savedDate)}` : 'No date';
+  const status = expiryStatus(savedDate, today);
+  const badge = BADGES[status];
 
   return (
-    <li>
+    <li className={badge ? `expiry-row--${status}` : undefined}>
       <span className="expiry-name">{item.name}</span>
       <span className="expiry-status">
-        <span>{amountText}</span> · <span>{dateText}</span>
+        <span>{amountText}</span> ·{' '}
+        {badge && (
+          <>
+            <span className={`expiry-badge expiry-badge--${status}`}>{badge}</span> ·{' '}
+          </>
+        )}
+        <span>{dateText}</span>
       </span>
       <button
         type="button"
@@ -214,6 +225,8 @@ function PantryExpiryList({
   items,
   expiry,
   details = {},
+  // "YYYY-MM-DD" in the user's time zone (todayLocal()); decides Expired / Soon.
+  today,
   pendingIds,
   onSave,
   onSaveAmount,
@@ -235,6 +248,7 @@ function PantryExpiryList({
           item={item}
           savedDate={expiry[item.id] ?? null}
           saved={details[item.id] ?? NO_DETAILS}
+          today={today}
           pending={pendingIds.includes(item.id)}
           onSave={onSave}
           onSaveAmount={onSaveAmount}

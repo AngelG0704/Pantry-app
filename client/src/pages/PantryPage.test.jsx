@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -78,6 +78,15 @@ async function renderReady({ pantry = [EGG], matches = [TOAST] } = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   useAuth.mockReturnValue({ token: 'tok' });
+  // The page asks the clock for today. Pin it to Nov 1, 2026, noon local time, so the
+  // Nov 10 and Dec 1 dates below get no badge whatever day the tests run.
+  // Only Date is faked: userEvent and findBy still need real timers.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 10, 1, 12));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('PantryPage: loading', () => {
@@ -301,6 +310,24 @@ describe('PantryPage: expiry dates', () => {
     expect(screen.getByRole('heading',{ name: 'In your pantry' })).toBeInTheDocument();
     expect(expiryRow('egg')).toHaveTextContent('expires Nov 10, 2026');
     expect(expiryRow('butter')).toHaveTextContent('No date');
+  });
+
+  it("badges rows using today's date where the user is", async () => {
+    // 11:30 pm local on Nov 9. West of UTC it is already Nov 10 in UTC; a page that
+    // used the UTC day would call egg expired. Today counts as soon.
+    vi.setSystemTime(new Date(2026, 10, 9, 23, 30));
+    await renderReady({
+      pantry: [
+        { ...EGG, expiresOn: '2026-11-09' },
+        { ...BUTTER, expiresOn: '2026-11-08' },
+        { ...BREAD, expiresOn: '2026-11-13' },
+      ],
+    });
+
+    expect(expiryRow('egg')).toHaveTextContent('Soon · expires Nov 9, 2026');
+    expect(expiryRow('egg')).toHaveClass('expiry-row--soon');
+    expect(expiryRow('butter')).toHaveTextContent('Expired · expires Nov 8, 2026');
+    expect(expiryRow('bread')).not.toHaveTextContent(/Expired|Soon/);
   });
 
   it('saves a date, shows what the server returned, and does not refresh the matches', async () => {
