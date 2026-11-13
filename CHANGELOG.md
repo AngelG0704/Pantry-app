@@ -3,16 +3,18 @@
 All notable changes to this project will be further documented in this file, see README.md
 for a more broad information about this project.
 
-## 11-12-2026
+## 11-13-2026
 ### Version 1.6.0: Expiry-aware pantry (in progress)
- 
+
 The pantry learns to sort and highlight by expiry, and recipes learn which of your
 ingredients they use. This entry covers the server part (12A-1, PR #50, deployed on
-11-12-2026); the web app parts follow in 12A-2 to 12A-4. No migration: both new fields
-come from data that was already stored.
- 
+11-12-2026), the `POST /api/pantry` change (12A-2a, PR #52), and the Pantry page's
+badges and sorting (12A-2). Recipe search by any ingredient (12A-3) and measured
+scroll heights (12A-4) follow. No migration: every new field comes from data that was
+already stored.
+
 ### Added
- 
+
 - **`addedAt` on pantry items.** `GET /api/pantry` and `PATCH /api/pantry/:ingredientId`
   items are now `{ id, name, expiresOn, quantity, unit, addedAt }`. `addedAt` is the
   existing `added_at` column as an ISO timestamp in UTC, such as
@@ -21,9 +23,36 @@ come from data that was already stored.
 - **`ingredients` on matches.** Each result from `GET /api/recipes/match` and
   `GET /api/pantry/matches` now includes every ingredient of the recipe, alphabetically,
   next to `missingIngredients`. Ranking is unchanged.
-- **7 server tests** (196 → 203).
+- **Web app: Expired and Soon badges.** A pantry row's status reads like
+  "6 pieces · Soon · expires Nov 10, 2026". Soon means today up to 3 days ahead (today
+  is soon, not expired; day 4 gets no badge), and items without a date get none. Expired
+  and soon rows are tinted, with a bar on the left, in red and amber.
+- **Web app: Sort by.** A select under the pantry search with six orders: Expiry:
+  soonest first (the default), Expiry: latest first, Recently added, Oldest added,
+  Name: A–Z, and Name: Z–A. Items without a date go last in both expiry orders, ties go
+  by name A–Z, and an ingredient that was just ticked (the server hasn't answered yet)
+  counts as the newest. The search filters first, then what is left is sorted. The
+  control is hidden for an empty pantry and stays when a search matches nothing.
+- `sort.js` (`SORT_OPTIONS`, `DEFAULT_SORT`, `sortPantry`); `expiryStatus`, `todayLocal`,
+  and `SOON_DAYS` in `dates.js`; the `PantrySortSelect` component; `--color-warning` in
+  the stylesheet (`light-dark(#8a5300, #f0b45a)`: 5.2:1 and 6.3:1 against its badge tint;
+  danger badges are 5.6:1 and 5.3:1).
+- **9 server tests** (196 → 205) and **47 web app tests** (313 → 360).
+
+### Changed
+
+- **`POST /api/pantry` returns the whole item**, `{ id, name, expiresOn, quantity, unit,
+  addedAt }`, the same shape as `GET` and `PATCH`: `201` with the new item, or `200`
+  with the existing row unchanged (keeping its first `addedAt`). It used to return only
+  the ingredient, `{ id, name }`.
+- **Pantry page order:** the list follows the chosen sort instead of the catalog order.
+  With no dates, the default falls back to name A–Z, so a pantry without dates looks
+  the same as before.
+- `usePantry` keeps `addedAt` in `details`, including from the `POST` response, stored
+  once the request has answered.
+
 ### Notes
- 
+
 - `added_at` is a `TIMESTAMPTZ`, a moment rather than a calendar day, so it needs no
   `to_char` like `expires_on` does: node-postgres reads it as a JS Date and JSON writes
   it in UTC. The alias is quoted (`"addedAt"`); unquoted, Postgres lowercases it to
@@ -34,7 +63,31 @@ come from data that was already stored.
   small test data happened to come out sorted, but Postgres guarantees no order without
   it.
 - "Expires soon" is decided in the browser, not on the server: Render runs in UTC, so
-  the server's "today" turns into tomorrow every evening in New York.
+  the server's "today" turns into tomorrow every evening in New York. `todayLocal()`
+  builds the date from the local year, month, and day, never `toISOString()`. It is read
+  each time the page draws, so past midnight the badges catch up on the next re-render.
+- `INSERT … ON CONFLICT DO NOTHING RETURNING` returns no row when the ingredient is
+  already there, so `POST` reads the item with a second query to serve the `200` case.
+- The `POST` ownership test runs with both user orders: a lookup missing `user_id`
+  returned the right row with one order and the other user's row with the other.
+- PR #52 also carried the client commit that added `expiryStatus`, `todayLocal`, and
+  `SOON_DAYS`, because the server branch was created from the client branch instead of
+  `main`. It was tested and harmless; new branches now name their base
+  (`git switch -c <new> main`).
+- The Pantry page tests fix the clock at Nov 1, 2026, noon, so their dates don't change
+  meaning with the day the tests run. Only `Date` is faked
+  (`vi.useFakeTimers({ toFake: ['Date'] })`), so `userEvent` and `findBy` keep real
+  timers. One test sets 11:30 pm to check that the local day is used; on a CI runner in
+  UTC the local and UTC days agree, so that check only bites west of UTC (`dates.test.js`
+  covers `todayLocal` itself).
+- `sortPantry` copies before sorting: `Array.prototype.sort` reorders the array it is
+  called on.
+- Break-it findings: passing a `Date` as `today` blanks the page, and only the page
+  tests notice, since the list tests pass a string. Checking "soon" before "expired"
+  turns every past date into "Soon", because "before today" lies inside "3 days or
+  less". Sorting before or after filtering gives the same list (filtering keeps order,
+  and each item's place depends only on itself), so the page filters first, the cheaper
+  of the two.
 
 
 ## 11-08-2026

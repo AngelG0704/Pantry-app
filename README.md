@@ -26,8 +26,8 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **A personal pantry** that persists between sessions and is private to each user
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
-  and a pantry screen with amounts, expiry dates, and search, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 203 server tests and 313 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+  and a pantry screen with amounts, expiry dates, "Expired" and "Soon" badges, sorting, and search, in a warm theme with full light and dark modes
+- **A tested, hardened stack:** 205 server tests and 360 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -352,7 +352,7 @@ address from `client/.env.development` (`VITE_API_URL`, default
 | `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
 | `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
 | `/login`, `/register` | no | Forms that show the server's validation messages beside each field |
-| `/pantry` | **yes** | Your saved pantry: each item's amount and expiry date (rows open to edit or remove), a search box, and ranked recipes that update as you tick and untick; long lists scroll in a frame |
+| `/pantry` | **yes** | Your saved pantry: each item's amount and expiry date (rows open to edit or remove), "Expired" and "Soon" badges (soon = today to 3 days ahead, by your own calendar day), a search box, a "Sort by" control (expiry, date added, or name; soonest expiry first by default), and ranked recipes that update as you tick and untick; long lists scroll in a frame |
 | `/account` | **yes** | Your email and join date |
 | anything else | no | A "Page not found" screen |
 
@@ -363,7 +363,7 @@ How it's built:
 - **Where state lives.** The home-page selection lives in `App`, so it survives moving between screens (but not a reload). Per-user data such as the pantry lives inside protected pages, so nothing user-specific survives logout.
 - **Optimistic pantry updates.** Ticking an ingredient updates the screen immediately and is undone with an error message if the request fails.
 - **Text, never HTML.** React inserts recipe text as text, so stored content cannot inject markup.
-- **One stylesheet with design tokens.** `src/index.css` defines colors, spacing, and type once on `:root`; `light-dark()` gives each color a light and a dark value, so the theme follows the device setting. Terracotta marks actions and sage marks "you have this". No CSS framework and no third-party fonts.
+- **One stylesheet with design tokens.** `src/index.css` defines colors, spacing, and type once on `:root`; `light-dark()` gives each color a light and a dark value, so the theme follows the device setting. Terracotta marks actions, sage marks "you have this", amber marks "use soon", and red marks "expired". No CSS framework and no third-party fonts.
 
 ### Sessions in the browser
 
@@ -396,7 +396,7 @@ responses are JSON.
 | POST | `/api/auth/login` | none | Log in and receive a token |
 | GET | `/api/auth/me` | Bearer | The current user |
 | GET | `/api/pantry` | Bearer | List my pantry (with each item's expiry date, amount, and when it was added) |
-| POST | `/api/pantry` | Bearer | Add an ingredient to my pantry |
+| POST | `/api/pantry` | Bearer | Add an ingredient to my pantry; returns the whole item (`201` new, `200` already there, unchanged) |
 | DELETE | `/api/pantry/:ingredientId` | Bearer | Remove an ingredient from my pantry |
 | GET | `/api/pantry/matches` | Bearer | Rank recipes against my saved pantry (same fields as `/api/recipes/match`) |
 | PATCH | `/api/pantry/:ingredientId` | Bearer | Update an item's expiry date and/or amount (fields left out are unchanged) |
@@ -525,7 +525,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **203 automated tests** and runs against a separate database, so it never touches your development data. The web app has **313 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **205 automated tests** and runs against a separate database, so it never touches your development data. The web app has **360 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -573,9 +573,9 @@ npm test -- --test-name-pattern="tampered"
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
 | `matching.test.js` | 22 | Ranking, scoring, missing and full ingredient lists, `maxMissing`, input validation |
-| `pantry.test.js` | 95 | Authentication on every route, ownership, idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items), amounts (numbers not strings, partial updates, every unit through the database check, rejected rather than rounded decimals), `addedAt` (ISO in UTC, kept on PATCH and re-add, new after remove) |
+| `pantry.test.js` | 97 | Authentication on every route, ownership (both user orders), idempotency, cascade, pantry matching, expiry dates (exact `YYYY-MM-DD`, validation, other users' items), amounts (numbers not strings, partial updates, every unit through the database check, rejected rather than rounded decimals), `addedAt` (ISO in UTC, kept on PATCH and re-add, new after remove), `POST` returning the whole item (`200` leaves the existing row unchanged) |
 | `errorHandler.test.js` | 4 | Internals never leak to clients; only server errors are logged as errors |
-| `security.test.js` | 7 | Headers, CORS allowlist and preflight, body size limit |
+| `security.test.js` | 10 | Headers, CORS allowlist and preflight, body size limit |
 | `rateLimit.test.js` | 8 | Limiter behavior, and which limiter guards which route |
 | `validation.test.js` | 10 | Error shape, normalization, messages clients rely on |
 | `health.test.js` | 6 | Health and liveness checks, and database outages becoming controlled responses |
@@ -614,10 +614,10 @@ Before each test the page is emptied and mocks are reset.
 | Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
 | Auth pages | `LoginPage.test.jsx` (6), `RegisterPage.test.jsx` (11), `AccountPage.test.jsx` (2) | Redirects, per-field errors, the submitting state, the creation date |
 | Search | `HomePage.test.jsx` (18), `useSearchState.test.js` (9), `useRecipeMatches.test.js` (8), `useIngredients.test.js` (6) | Picking, the 50-ingredient limit, searching, aborted requests, error and retry |
-| Pantry | `PantryPage.test.jsx` (35), `PantryExpiryList.test.jsx` (37), `usePantry.test.js` (26), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, dates and amounts (numbers not strings, both fields kept), collapsing rows, two-step remove, scroll frames, search |
-| Dates | `dates.test.js` (6) | Expiry dates show the same day in every time zone |
-| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (8) | Display, marks, errors, retry, server ranking order, no injected markup |
-| Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
+| Pantry | `PantryPage.test.jsx` (43), `PantryExpiryList.test.jsx` (41), `usePantry.test.js` (29), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, dates and amounts (numbers not strings, both fields kept), `addedAt` kept from every response, collapsing rows, two-step remove, scroll frames, search, "Expired" and "Soon" badges from the local day (with the clock fixed), each sort order, search and sort together, a just-ticked item counting as newest |
+| Helpers | `dates.test.js` (23), `sort.test.js` (12), `units.test.js` (20), `search.test.js` (3) | Expiry dates show the same day in every time zone; expiry status at each boundary; today as the local calendar day; every sort order, undated items last, ties by name, the input never reordered; amounts and units; search matching |
+| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (14) | Display, marks, errors, retry, server ranking order, no injected markup |
+| Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `PantrySortSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
 
 The server tests pin which fields the API sends; the client tests pin how they are
 read. A field renamed on one side only is caught by the side that still pins the old
@@ -649,8 +649,8 @@ Two jobs run in parallel, each on a fresh Linux machine:
 | Job | What it does |
 
 |---|---|
-| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 203 tests |
-| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 313 web app tests, and builds the production bundle |
+| **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 205 tests |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 360 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
@@ -861,7 +861,7 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, highlighting and sorting items that expire soon, unit conversion, and an accessibility audit.
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, unit conversion, and an accessibility audit.
 
 ## Known limitations
 
@@ -873,7 +873,7 @@ Ideas for what could come next: an error-tracking service, a staging environment
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.
 - Rate-limit counters are in memory: they reset on restart and aren't shared between multiple server instances. Limits are per IP, so users sharing an address share a budget, and there is no per-account lockout.
 - The home-page selection is lost on reload.
-- The pantry records presence, an optional expiry date, and an optional amount (quantity and unit), and has no bulk operations. Units come from a fixed list kept in three places (migration 003, the server schema, `client/src/units.js`) and aren't converted (2 cup and 500 ml are not compared). Items aren't sorted or highlighted by how soon they expire. Recipe search matches titles and missing ingredients only: the matches API now sends every ingredient, but the web app doesn't use it yet.
+- The pantry records presence, an optional expiry date, and an optional amount (quantity and unit), and has no bulk operations. Units come from a fixed list kept in three places (migration 003, the server schema, `client/src/units.js`) and aren't converted (2 cup and 500 ml are not compared). The chosen sort isn't remembered after a reload, and "today" (for the Expired and Soon badges) is read when the page draws, so past midnight the badges catch up only on the next re-render. Recipe search matches titles and missing ingredients only: the matches API now sends every ingredient, but the web app doesn't use it yet.
 - Ingredient names are matched exactly, with no synonyms.
 - Accessibility covers the basics (labels, roles, keyboard-operable controls, a visible focus ring, and text contrast checked against WCAG AA) but has not been audited.
 - No visual regression tests: the tests check behavior, not appearance, so a CSS change that breaks the layout still passes CI. The theme also relies on `light-dark()` and `:has(`, which need a current browser.
