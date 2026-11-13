@@ -13,7 +13,7 @@ function pickDetails(item) {
     expiresOn: item.expiresOn ?? null,
     quantity: item.quantity ?? null,
     unit: item.unit ?? null,
-  };
+    addedAt: item.addedAt ?? null,  };
 }
 
 export function usePantry(token) {
@@ -79,9 +79,10 @@ export function usePantry(token) {
         await removeFromPantry(token, id);
         forgetDetails(id);
       } else {
-        await addToPantry(token, id);
-      }
-      setVersion((current) => current + 1);
+        // The server returns the whole new item (with addedAt): keep it, like save() does.
+        const item = await addToPantry(token, id);
+        setDetails((current) => ({ ...current, [id]: pickDetails(item) }));
+      }      setVersion((current) => current + 1);
     } catch (err) {
       if (wasInPantry && err.status === 404) {
         // Already gone on the server, which is what we wanted.

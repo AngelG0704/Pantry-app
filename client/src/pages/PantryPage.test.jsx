@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -68,16 +68,25 @@ async function removeViaRow(user, name) {
 }
 const box = (name) => screen.getByRole('checkbox', { name });
 
-async function renderReady({ pantry = [EGG], matches = [TOAST] } = {}) {
+async function renderReady({ pantry = [EGG], matches = [TOAST], catalog = CATALOG } = {}) {
   getPantry.mockResolvedValue(pantry);
   getMyMatches.mockResolvedValue(matches);
-  renderPantry();
+  renderPantry({ catalog: catalogState({ data: catalog }) });
   await screen.findByRole('heading', { name: 'In your pantry' });
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   useAuth.mockReturnValue({ token: 'tok' });
+  // The page asks the clock for today. Pin it to Nov 1, 2026, noon local time, so the
+  // Nov 10 and Dec 1 dates below get no badge whatever day the tests run.
+  // Only Date is faked: userEvent and findBy still need real timers.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 10, 1, 12));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('PantryPage: loading', () => {
@@ -155,10 +164,11 @@ describe('PantryPage: showing the saved pantry', () => {
     });
   });
 
-  it('lists the saved ingredients as chips and ticks them in the picker', async () => {
+  it('lists the saved ingredients and ticks them in the picker', async () => {
     await renderReady({ pantry: [BUTTER, EGG] });
 
-    expect(pantryNames()).toEqual(['egg', 'butter']);
+    // No dates, so the default sort falls back to name A–Z.
+    expect(pantryNames()).toEqual(['butter', 'egg']);
     expect(box('egg')).toBeChecked();
     expect(box('butter')).toBeChecked();
     expect(box('bread')).not.toBeChecked();
@@ -167,10 +177,11 @@ describe('PantryPage: showing the saved pantry', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows chips in catalog order, not in the order the server listed them', async () => {
-    await renderReady({ pantry: [BREAD, EGG] });
+  it('orders rows by the sort, not by the server or the catalog', async () => {
+    // Server and catalog both say egg, bread; the default sort (no dates: name A–Z) says otherwise.
+    await renderReady({ pantry: [EGG, BREAD] });
 
-    expect(pantryNames()).toEqual(['egg', 'bread']);
+    expect(pantryNames()).toEqual(['bread', 'egg']);
   });
 
   it('shows a pantry-specific message when the pantry is empty', async () => {
@@ -238,7 +249,7 @@ describe('PantryPage: changing the pantry', () => {
     await user.click(box('butter'));
 
     expect(addToPantry).toHaveBeenCalledWith('tok', 2);
-    expect(pantryNames()).toEqual(['egg', 'butter']);
+    expect(pantryNames()).toEqual(['butter', 'egg']);
     await waitFor(() => expect(getMyMatches).toHaveBeenCalledTimes(2));
   });
 
@@ -301,6 +312,24 @@ describe('PantryPage: expiry dates', () => {
     expect(screen.getByRole('heading',{ name: 'In your pantry' })).toBeInTheDocument();
     expect(expiryRow('egg')).toHaveTextContent('expires Nov 10, 2026');
     expect(expiryRow('butter')).toHaveTextContent('No date');
+  });
+
+  it("badges rows using today's date where the user is", async () => {
+    // 11:30 pm local on Nov 9. West of UTC it is already Nov 10 in UTC; a page that
+    // used the UTC day would call egg expired. Today counts as soon.
+    vi.setSystemTime(new Date(2026, 10, 9, 23, 30));
+    await renderReady({
+      pantry: [
+        { ...EGG, expiresOn: '2026-11-09' },
+        { ...BUTTER, expiresOn: '2026-11-08' },
+        { ...BREAD, expiresOn: '2026-11-13' },
+      ],
+    });
+
+    expect(expiryRow('egg')).toHaveTextContent('Soon · expires Nov 9, 2026');
+    expect(expiryRow('egg')).toHaveClass('expiry-row--soon');
+    expect(expiryRow('butter')).toHaveTextContent('Expired · expires Nov 8, 2026');
+    expect(expiryRow('bread')).not.toHaveTextContent(/Expired|Soon/);
   });
 
   it('saves a date, shows what the server returned, and does not refresh the matches', async () => {
@@ -491,7 +520,7 @@ describe('PantryPage: searching', () => {
     expect(screen.getByText('No pantry items match “milk”.')).toBeInTheDocument();
 
     await user.clear(search);
-    expect(pantryNames()).toEqual(['egg', 'butter']);
+    expect(pantryNames()).toEqual(['butter', 'egg']);
   });
 
   it('shows no pantry search for an empty pantry', async () => {
@@ -518,5 +547,119 @@ describe('PantryPage: searching', () => {
     await user.type(await screen.findByRole('searchbox', { name: 'Search recipes' }), 'pizza');
 
     expect(screen.getByText('No recipes match “pizza”.')).toBeInTheDocument();
+  });
+});
+
+describe('PantryPage: sorting', () => {
+  const MILK = { id: 4, name: 'milk' };
+  const SORT_CATALOG = [EGG, BUTTER, BREAD, MILK];
+  const item = (base, expiresOn, addedAt) => ({
+    ...base,
+    expiresOn,
+    quantity: null,
+    unit: null,
+    addedAt,
+  });
+  // Picked so all six sorts give six different orders, none of them the server's
+  // or the catalog's (egg, butter, bread, milk). Added, oldest first: egg, milk, butter, bread.
+  const SORT_PANTRY = [
+    item(EGG, '2026-11-20', '2026-10-01T09:00:00.000Z'),
+    item(BUTTER, null, '2026-10-03T09:00:00.000Z'),
+    item(BREAD, '2026-11-10', '2026-10-04T09:00:00.000Z'),
+    item(MILK, '2026-11-05', '2026-10-02T09:00:00.000Z'),
+  ];
+  const sortSelect = () => screen.getByLabelText('Sort by');
+  const renderSorted = (pantry = SORT_PANTRY) =>
+    renderReady({ pantry, catalog: SORT_CATALOG });
+
+  it('starts on "Expiry: soonest first", with undated items last', async () => {
+    await renderSorted();
+
+    expect(sortSelect()).toHaveValue('expiry-asc');
+    expect(sortSelect()).toHaveDisplayValue('Expiry: soonest first');
+    expect(pantryNames()).toEqual(['milk', 'bread', 'egg', 'butter']);
+  });
+
+  it('reorders the rows for each choice', async () => {
+    await renderSorted();
+    const user = userEvent.setup();
+    // Each order differs from the one before, so a choice that changed nothing would show.
+    const cases = [
+      ['Name: Z–A', ['milk', 'egg', 'butter', 'bread']],
+      ['Expiry: latest first', ['egg', 'bread', 'milk', 'butter']],
+      ['Recently added', ['bread', 'butter', 'milk', 'egg']],
+      ['Oldest added', ['egg', 'milk', 'butter', 'bread']],
+      ['Name: A–Z', ['bread', 'butter', 'egg', 'milk']],
+      ['Expiry: soonest first', ['milk', 'bread', 'egg', 'butter']],
+    ];
+
+    for (const [label, names] of cases) {
+      await user.selectOptions(sortSelect(), label);
+      expect(pantryNames(), label).toEqual(names);
+    }
+  });
+
+  it('filters, then sorts what is left, and keeps the sort when the search is cleared', async () => {
+    await renderSorted();
+    const user = userEvent.setup();
+    const search = screen.getByRole('searchbox', { name: 'Search your pantry' });
+
+    // The catalog order of the two "b" items is butter, bread; this sort must give the
+    // other order, or an unsorted list would pass the first check by luck.
+    await user.selectOptions(sortSelect(), 'Expiry: latest first');
+    await user.type(search, 'b');
+    expect(pantryNames()).toEqual(['bread', 'butter']);
+
+    await user.clear(search);
+    expect(sortSelect()).toHaveValue('expiry-desc');
+    expect(pantryNames()).toEqual(['egg', 'bread', 'milk', 'butter']);
+  });
+
+  it('keeps the sort control when a search matches nothing', async () => {
+    await renderSorted();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search your pantry' }), 'zzz');
+
+    expect(screen.getByText('No pantry items match “zzz”.')).toBeInTheDocument();
+    expect(sortSelect()).toBeInTheDocument();
+  });
+
+  it('shows no sort control for an empty pantry', async () => {
+    await renderSorted([]);
+
+    expect(screen.queryByLabelText('Sort by')).not.toBeInTheDocument();
+  });
+
+  it('puts a just-ticked item at the top of "Recently added", before and after the server answers', async () => {
+    let answer;
+    addToPantry.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await renderSorted(SORT_PANTRY.filter((row) => row.id !== BREAD.id));
+    const user = userEvent.setup();
+
+    await user.selectOptions(sortSelect(), 'Recently added');
+    expect(pantryNames()).toEqual(['butter', 'milk', 'egg']);
+
+    // Still waiting for the server: no addedAt yet, which counts as newest.
+    await user.click(box('bread'));
+    expect(pantryNames()).toEqual(['bread', 'butter', 'milk', 'egg']);
+
+    // The server's addedAt is the newest too, so bread stays where it is.
+    answer(item(BREAD, null, '2026-11-01T12:00:00.000Z'));
+    await waitFor(() => expect(box('bread')).toBeEnabled());
+    expect(pantryNames()).toEqual(['bread', 'butter', 'milk', 'egg']);
+  });
+
+  it('moves a row when its new date is saved, and keeps that row open', async () => {
+    setPantryExpiry.mockResolvedValue(item(BUTTER, '2026-11-03', '2026-10-03T09:00:00.000Z'));
+    await renderSorted();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit butter' }));
+    await user.type(screen.getByLabelText('Expiry date for butter'), '2026-11-03');
+    await user.click(screen.getByRole('button', { name: 'Save expiry date for butter' }));
+
+    await waitFor(() => expect(pantryNames()).toEqual(['butter', 'milk', 'bread', 'egg']));
+    expect(screen.getByRole('button', { name: 'Close butter' })).toBeInTheDocument();
   });
 });

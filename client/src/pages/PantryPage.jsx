@@ -6,7 +6,10 @@ import IngredientPicker from '../components/IngredientPicker.jsx';
 import MaxMissingSelect from '../components/MaxMissingSelect.jsx';
 import RecipeResults from '../components/RecipeResults.jsx';
 import PantryExpiryList from '../components/PantryExpiryList.jsx';
+import PantrySortSelect from '../components/PantrySortSelect.jsx';
 import { matchesQuery } from '../search.js';
+import { todayLocal } from '../dates.js';
+import { DEFAULT_SORT, sortPantry } from '../sort.js';
 
 // Both lists on this page scroll inside a frame once they pass this many items.
 const SCROLL_AFTER = 8;
@@ -18,6 +21,8 @@ function PantryPage({ search }) {
   const pantry = usePantry(token);
   const [maxMissing, setMaxMissing] = useState('');
   const [pantryQuery, setPantryQuery] = useState('');
+  // Not remembered: every visit starts on the default.
+  const [sortKey, setSortKey] = useState(DEFAULT_SORT);
   const matches = useMyMatches(token, pantry.version, maxMissing);
 
   const inPantry = catalog.data.filter((ingredient) =>
@@ -27,6 +32,9 @@ function PantryPage({ search }) {
   const visiblePantry = inPantry.filter((ingredient) =>
     matchesQuery(pantryQuery, ingredient.name)
   );
+
+  // Filter first, then sort what is left.
+  const sortedPantry = sortPantry(visiblePantry, pantry.details, sortKey);
 
   const loading = catalog.status === 'loading' || pantry.status === 'loading';
   const ready = catalog.status === 'success' && pantry.status === 'success';
@@ -75,14 +83,17 @@ function PantryPage({ search }) {
                   onChange={(event) => setPantryQuery(event.target.value)}
                   placeholder="e.g. egg"
                 />
+                <PantrySortSelect id="pantry-sort" value={sortKey} onChange={setSortKey} />
               </div>
               {visiblePantry.length === 0 ? (
                 <p className="status">No pantry items match &ldquo;{pantryQuery}&rdquo;.</p>
               ) : (
                 <PantryExpiryList
-                  items={visiblePantry}
+                  items={sortedPantry}
                   expiry={pantry.expiry}
                   details={pantry.details}
+                  // Read on every render: past midnight it updates on the next re-render only.
+                  today={todayLocal()}
                   pendingIds={pantry.pendingIds}
                   onSave={pantry.setExpiry}
                   onSaveAmount={pantry.updateItem}

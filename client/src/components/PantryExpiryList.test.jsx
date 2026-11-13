@@ -13,16 +13,20 @@ function renderList({
   details = {},
   pendingIds = [],
   onSave = vi.fn().mockResolvedValue(true),
-  onSaveAmount = vi.fn().mockResolvedValue(true),  
+  onSaveAmount = vi.fn().mockResolvedValue(true),
   onRemove = vi.fn(),
   scrollAfter,
+  // Nine days before egg's date: egg is "ok", so tests that aren't about badges see none.
+  today = '2026-11-01',
   // Rows start collapsed; most tests are about the forms, so open them unless told not to.
   open = items.map((item) => item.name),
-} = {}) {  render(
+} = {}) {
+  render(
     <PantryExpiryList
       items={items}
       expiry={expiry}
       details={details}
+      today={today}
       pendingIds={pendingIds}
       onSave={onSave}
       onSaveAmount={onSaveAmount}
@@ -428,6 +432,90 @@ describe('PantryExpiryList: removing', () => {
     renderList({ open: ['egg'], pendingIds: [1] });
 
     expect(removeButton('egg')).toBeDisabled();
+  });
+});
+
+describe('PantryExpiryList: expiry badges', () => {
+  // With today = Nov 10: Nov 9 is expired, Nov 10 (today) and Nov 13 (day 3) are soon,
+  // Nov 14 (day 4) is ok. dates.test.js covers every boundary; this checks the display.
+  const TODAY = '2026-11-10';
+  const MILK = { id: 3, name: 'milk' };
+  const FLOUR = { id: 4, name: 'flour' };
+  const ITEMS = [EGG, BUTTER, MILK, FLOUR];
+  const EXPIRY = { 1: '2026-11-09', 2: '2026-11-10', 3: '2026-11-14', 4: null };
+  const DETAILS = {
+    1: { expiresOn: '2026-11-09', quantity: 6, unit: 'piece' },
+    2: { expiresOn: '2026-11-10', quantity: null, unit: null },
+    3: { expiresOn: '2026-11-14', quantity: 1, unit: 'l' },
+    4: { expiresOn: null, quantity: null, unit: null },
+  };
+
+  const renderBadges = (overrides = {}) =>
+    renderList({
+      items: ITEMS,
+      expiry: EXPIRY,
+      details: DETAILS,
+      today: TODAY,
+      open: [],
+      ...overrides,
+    });
+
+  it('puts "Expired" or "Soon" between the amount and the date', () => {
+    renderBadges();
+
+    expect(row('egg')).toHaveTextContent('6 pieces · Expired · expires Nov 9, 2026');
+    expect(row('butter')).toHaveTextContent('No amount · Soon · expires Nov 10, 2026');
+  });
+
+  it('shows no badge for a date further off, or for no date', () => {
+    renderBadges();
+
+    expect(row('milk')).toHaveTextContent('1 l · expires Nov 14, 2026');
+    expect(row('flour')).toHaveTextContent('No amount · No date');
+    for (const name of ['milk', 'flour']) {
+      expect(row(name)).not.toHaveTextContent(/Expired|Soon/);
+    }
+  });
+
+  it('marks the row itself, so it can be highlighted', () => {
+    renderBadges();
+
+    expect(row('egg')).toHaveClass('expiry-row--expired');
+    expect(row('egg')).not.toHaveClass('expiry-row--soon');
+    expect(row('butter')).toHaveClass('expiry-row--soon');
+    expect(row('butter')).not.toHaveClass('expiry-row--expired');
+    for (const name of ['milk', 'flour']) {
+      expect(row(name).className).not.toMatch(/expiry-row--/);
+    }
+  });
+
+  it('decides the badge from the today it is given, not from the clock', () => {
+    // Butter expires Nov 10 in every render; only today changes.
+    const cases = [
+      ['2026-11-06', null],
+      ['2026-11-07', 'Soon'],
+      ['2026-11-10', 'Soon'],
+      ['2026-11-11', 'Expired'],
+    ];
+    for (const [today, badge] of cases) {
+      const { unmount } = render(
+        <PantryExpiryList
+          items={[BUTTER]}
+          expiry={{ 2: '2026-11-10' }}
+          today={today}
+          pendingIds={[]}
+        />
+      );
+      const status = row('butter').querySelector('.expiry-status');
+      if (badge === null) {
+        expect(status, `today ${today}`).toHaveTextContent('No amount · expires Nov 10, 2026');
+      } else {
+        expect(status, `today ${today}`).toHaveTextContent(
+          `No amount · ${badge} · expires Nov 10, 2026`
+        );
+      }
+      unmount();
+    }
   });
 });
 
