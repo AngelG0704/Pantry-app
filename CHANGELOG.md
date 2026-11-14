@@ -4,6 +4,238 @@ All notable changes to this project will be further documented in this file, see
 for a more broad information about this project.
 
 ## 11-13-2026
+### Version 1.7.0: End-to-end tests
+
+A new test layer: Playwright drives a real browser (Chromium) against the real web app,
+the real API, and a database of its own, `pantry_e2e`. Until now the server tests called
+the API directly and the web app tests replaced it with mocks, so nothing proved the two
+sides fit together. Six tests now cover sign-in and the main pantry flows, and they run
+in CI as a third job. No change to the app, the API, or the database schema.
+
+### Added
+
+- **`e2e/`**, a folder with its own `package.json` (`@playwright/test` 1.65.1), so
+  Playwright stays out of the server and client dependencies.
+- **`e2e/playwright.config.js`**:
+  - **A database guard.** It refuses to run unless `E2E_DATABASE_URL` names a database
+    called exactly `pantry_e2e` (the URL is parsed, not matched with `endsWith`), and it
+    stops before any server starts.
+  - **It starts both servers.** The API runs on port 3100 after `npm run db:seed`, and
+    the web app on 5174 (`--strictPort`), pointed at that API. Dev servers on 3000 and
+    5173 are never used.
+  - **Every server setting is passed explicitly** (`DATABASE_URL`, `JWT_SECRET`,
+    `BCRYPT_ROUNDS=4`, `CORS_ORIGINS`, high rate limits, `LOG_LEVEL=silent`), so
+    `server/.env` can never fill a gap.
+  - **A fixed browser setup:** Chromium only, time zone `America/New_York`, locale
+    `en-US`.
+  - **CI settings** (with `CI` set): 1 retry, 1 worker, a trace on the retry,
+    `forbidOnly`, and the `github` and HTML reporters.
+- **Six tests:**
+  - `smoke.spec.js`: the home page loads the ingredient list from the API.
+  - `auth.spec.js`: register, log out, log back in, still logged in after a reload.
+  - `pantry-matching.spec.js`: ticked items are saved and listed, and the cards show
+    the exact counts ("3 of 3 ingredients", "2 of 3", "You still need: bread").
+  - `pantry-expiry.spec.js`: the clock is fixed to 2026-11-10 12:00 New York time.
+    "Soon" shows for today and for the 3-day boundary (Nov 13), "Expired" for
+    yesterday, and the whole "Use soon" label matches, with the expired item left out.
+  - `pantry-sort.spec.js`: "Expiry: soonest first" and "Expiry: latest first", with
+    undated items last in both.
+  - `pantry-isolation.spec.js`: two users in separate browser contexts never see each
+    other's pantry, in either direction.
+- **`e2e/tests/helpers.js`**:
+  - `uniqueEmail` and `PASSWORD`.
+  - `register`, `logIn` and `logOut`. Each one waits for the header to show the
+    expected user (or no user), not just for the URL to change.
+  - `openPantry`, which waits for the pantry to **load**, not just the page.
+  - `addToPantry`, which waits for the server's answer: the tick is optimistic, so it
+    waits for the box to be enabled again and still ticked.
+  - `setExpiry`, `pantryList`, `pantryRow` and `recipeCard`.
+- **CI: an `End-to-end tests` job** in `.github/workflows/ci.yml`. It starts Postgres 16
+  with `pantry_e2e`, runs `npm ci` for server, client, and e2e, and installs Chromium
+  with its system libraries. If a test fails, it uploads `e2e/playwright-report` with
+  `actions/upload-artifact@v7`, kept for 7 days. It runs on pull requests and on pushes
+  to `main`, so a red run also holds a Render deploy (`checksPass`).
+- **Dependabot:** an `npm` entry for `/e2e`, so Playwright gets weekly update PRs too.
+- **README:**
+  - A new "End-to-end tests" section: setup, running, what each test checks, how they
+    stay safe, and what to open when one fails.
+  - A third job in the CI table.
+  - Playwright in the tech stack, `e2e/` in the project structure, and the e2e
+    `npm test` under Scripts.
+  - Four troubleshooting rows.
+  - A roadmap row.
+  - The "nothing runs the real client against the real API" limitation rewritten.
+
+### Changed
+
+- Nothing in `server/` or `client/`. Every break in the section below was undone, and
+  `git diff` was checked empty after each one. The suites are unchanged: **205 server
+  tests** and **401 web app tests**, plus the **6 end-to-end tests**.
+- **README tables render again.** 15 tables (Tech stack, Scripts, the configuration
+  variables, "What's covered", the CI pipeline, Troubleshooting, and others) had a blank
+  line between the header row and the `|---|` row, so GitHub showed them as plain text.
+  The blank lines were removed; nothing else in those tables changed.
+
+### Break-it experiments
+
+Every test was seen failing for a bug caused on purpose before it was trusted. Each
+change was made, the tests were run, and the change was undone by hand. Each entry
+gives what the break is, how a real bug like it gets in, how it was spotted (what
+actually failed), and how to fix it.
+
+#### A. The test run pointed at the wrong database
+
+- **What the break is:** running `npx playwright test` with `E2E_DATABASE_URL` unset, or
+  set to the dev database (`.../pantry`).
+- **How it happens:** a new terminal window doesn't have the variable, or the URL gets
+  copied from `server/.env`. Without the guard, the API would start on whatever
+  database it found, `db:seed` would run migrations there, and every run would add test
+  users to the dev data.
+- **How to spot it:** both runs stop in under a second, with exit code 1 (so CI goes
+  red), before either server starts. The messages are
+  `E2E_DATABASE_URL is not set. Set it to the e2e database, ...` and
+  `E2E_DATABASE_URL must point at a database named pantry_e2e, ...`.
+- **How to fix it:** set the variable to the `pantry_e2e` URL.
+
+#### B. Logging in with the wrong password
+
+- **What the break is:** the login step in `auth.spec.js` using a password other than
+  the registered one.
+- **How it happens:** a constant changed in one place, a typo, or a test reusing a user
+  another test made. The API answers 401 and the page stays on `/login`.
+- **How to spot it:** the test fails after 5.5 seconds (the 5-second `expect` timeout).
+  The message is `expect(locator).toBeVisible() failed`, and it names the locator in
+  full: the header link with the user's exact email. The code excerpt points at the
+  helper (`helpers.js:20`), and the stack below it leads to the failing step,
+  `auth.spec.js:16`. The message says *what* never appeared, not *why*. The page
+  snapshot in `test-results/.../error-context.md` shows why: still on the login form,
+  logged out, with `alert: Invalid email or password`.
+- **How to fix it:** register and log in both use `PASSWORD` from `helpers.js`, and
+  every test registers its own user with `uniqueEmail`.
+
+#### C. A field renamed on one side only
+
+- **What the break is:** in the server's `toMatch` (`recipeService.js`),
+  `matchedCount: row.matched_count` became `matched: row.matched_count`. The web app
+  was left alone.
+- **How it happens:** someone tidies a field name or a SQL alias on the server. The web
+  app still reads `recipe.matchedCount`, so every card says
+  "undefined of 3 ingredients". This is the bug class this version exists for. Renaming
+  `matchScore` would not have been the same test: the web app never reads it, so
+  nothing on screen changes.
+- **How to spot it:**
+  - **Server:** 3 of 205 fail, all for `GET /api/recipes/match` in `matching.test.js`,
+    with `Expected values to be strictly equal`. If the rename had updated those tests
+    too, which is the realistic case, none would fail.
+  - **Web app:** 401 of 401 pass. Its tests mock `fetch` with the old name.
+  - **End-to-end:** `pantry-matching.spec.js:27` fails after 5.7 seconds.
+    `Expected substring: "3 of 3 ingredients"`, but the received text is
+    `"Cheese omelette10 min · undefined of 3 ingredientsYou can make this now."`.
+  - The pantry rows passed first, which pins the break to the counts.
+    "You can make this now." was still right, because it comes from
+    `missingIngredients`. A test that only checked that line, or only that a card was
+    visible, would have passed.
+- **How to fix it:** rename it back. When a rename is meant, change the server, the web
+  app, and both sides' tests in one PR, and let the end-to-end test prove they still
+  fit.
+
+#### D. The "Soon" window changed from 3 days to 2
+
+- **What the break is:** `SOON_DAYS = 3` became `2` in `client/src/dates.js`.
+- **How it happens:** a "small tweak" to a business rule without touching its tests or
+  docs. An item exactly 3 days out loses its "Soon" badge and leaves the "Use soon"
+  label, while items 0 to 2 days out don't change.
+- **How to spot it:**
+  - **Web app:** 7 of 401 fail. Five are in `dates.test.js`, starting with "soon means
+    within 3 days": `expected 2 to be 3`. One is a badge test in
+    `PantryExpiryList.test.jsx`, and one is a "Use soon" test in `PantryPage.test.jsx`.
+  - **End-to-end:** `pantry-expiry.spec.js:26` fails after 6.0 seconds, on butter only,
+    the Nov 13 item. It expected `"Soon · expires Nov 13, 2026"` and got
+    `"butterNo amount · expires Nov 13, 2026Edit"`: the badge was simply gone. Egg
+    (today) passed first. A test with only today or tomorrow in it would have stayed
+    green; the boundary date is what catches it.
+- **How to fix it:** restore 3. If the rule is meant to change, change `dates.test.js`,
+  the end-to-end expectation, and the README together.
+
+#### E. "Expiry: latest first" not reversed
+
+- **What the break is:** the `'expiry-desc'` comparator in `client/src/sort.js` used
+  direction `1` instead of `-1`, so it sorted the same as soonest first.
+- **How it happens:** copy-pasting the ascending comparator and forgetting to flip it.
+  The select changes, but the rows don't.
+- **How to spot it:**
+  - **Web app:** 3 of 401 fail: `sort.test.js > expiry-desc`, plus two sorting tests in
+    `PantryPage.test.jsx`. Each prints the expected and received row orders.
+  - **End-to-end:** `pantry-sort.spec.js:33` fails after 6.2 seconds. `toHaveText` with
+    a list prints a row-by-row diff: butter was expected first, and egg came first. The
+    default-order check before it passed, so the select had changed nothing.
+- **How to fix it:** restore `-1`. Keep one comparator per order with the direction as
+  an argument, and a test for each order.
+
+#### F. The pantry not filtered by user
+
+- **What the break is:** in `listPantry` (`server/src/services/pantryService.js`),
+  `WHERE p.user_id = $1` became `WHERE $1::int IS NOT NULL`. The filter is gone, but
+  the query still runs.
+- **How it happens:** a query refactor (a new join, a new list endpoint) drops the user
+  filter. Nothing crashes, and every user sees everyone's pantry: a silent data leak.
+- **How to spot it:**
+  - **Server:** 4 of 205 fail, including "shows each user only their own pantry". The
+    diff shows another user's `{ name: 'egg', ... }` row where `[]` was expected.
+  - **A variant:** simply deleting the `WHERE` line instead fails 56 of 205 with
+    `500 !== 200`. Postgres rejects a query that is sent `$1` and never uses it. That's
+    loud, not a leak, so it's the wrong break for this lesson.
+  - **End-to-end:** `pantry-isolation.spec.js` fails after 5.8 seconds:
+    `getByText('Your pantry is empty.')` was not found. The page snapshot shows the
+    leak. User B is logged in as themselves, and "In your pantry" lists butter, cheese,
+    egg, and milk from other test users, some with those users' dates.
+- **How to fix it:** restore the `WHERE`. Every pantry query filters by the user id from
+  the token, never from the request.
+- **What changed in the test afterwards:** the failure said *what* was missing, not
+  *why*. `openPantry` now waits for the "Add or remove ingredients" picker, which only
+  appears once the pantry has loaded. The test then checks for 0 rows before the
+  empty-state text, so a leak fails with the number of rows that leaked. Checking
+  0 rows first without that wait would pass straight away on the
+  "Loading your pantry…" screen.
+
+#### G. A regression reaching CI
+
+- **What the break is:** a pushed change that makes an end-to-end expectation fail.
+- **How it happens:** any real regression on a PR. With `retries: 1`, a real bug fails
+  twice, and the retry records a trace. The `if: failure()` step uploads the report,
+  and on `main`, Render's `checksPass` holds the deploy.
+- **How to spot it:** not run on purpose. The code went in as one commit, so CI ran
+  once. The red `End-to-end tests` job and its `playwright-report` artifact are what to
+  look for.
+- **How to fix it:** download the artifact, open `index.html`, and open the failed
+  test's trace to see the step where it broke. Fix it and push again.
+
+### Notes
+
+- **Found, not fixed:** `toMatch` also shapes `GET /api/pantry/matches`, the Pantry
+  page's recipes, and no server test checks `matchedCount` there; only
+  `GET /api/recipes/match` is pinned. The end-to-end matching test now covers it
+  through the browser.
+- **`check()` is not "saved":** ticking a pantry item is optimistic, so a checked box
+  proves nothing about the server. `addToPantry` waits for the box to be enabled again
+  (it is disabled while the request is pending) and still ticked (a refusal un-ticks
+  it). Saving a date is not optimistic, so `setExpiry` waits for the row to show the
+  new date.
+- **Labels are matched with `exact: true`.** `getByLabel('Password')` would also match
+  "Password (at least 8 characters)". The header's "Log in" link and the login page's
+  "Log in" button are told apart by role.
+- **The fixed clock includes an offset** (`'2026-11-10T12:00:00-05:00'`). Without one,
+  the time is read in the time zone of the machine running the tests, which on CI is
+  UTC. The sort test has no fixed clock, because its order doesn't depend on today.
+- **Every `expect` is awaited.** A missing `await` lets a test pass without checking
+  anything, so each step was checked for it.
+- **`pantry_e2e` keeps the users the tests create.** Each test makes its own, so
+  nothing needs resetting. The isolation break showed what that leftover data looks
+  like when a filter is missing.
+- **Not yet a required check:** `End-to-end tests` joins `main`'s required checks once
+  it has been green on a few PRs.
+
+## 11-13-2026
 ### Version 1.6.0: Expiry-aware pantry
 
 The pantry learns to sort and highlight by expiry, and recipes learn which of your
