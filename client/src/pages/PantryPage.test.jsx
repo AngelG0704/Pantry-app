@@ -36,6 +36,7 @@ const TOAST = {
   totalCount: 3,
   matchScore: 0.67,
   missingIngredients: ['salt'],
+  ingredients: ['bread', 'butter', 'salt'],
 };
 
 function apiError(message, status = 500) {
@@ -547,6 +548,90 @@ describe('PantryPage: searching', () => {
     await user.type(await screen.findByRole('searchbox', { name: 'Search recipes' }), 'pizza');
 
     expect(screen.getByText('No recipes match “pizza”.')).toBeInTheDocument();
+  });
+});
+
+describe('PantryPage: "Use soon" label on recipes', () => {
+  const OMELETTE = {
+    id: 8,
+    title: 'Cheese omelette',
+    prepMinutes: 10,
+    matchedCount: 2,
+    totalCount: 3,
+    matchScore: 0.67,
+    missingIngredients: ['cheese'],
+    ingredients: ['butter', 'cheese', 'egg'],
+  };
+  const dated = (base, expiresOn) => ({ ...base, expiresOn, quantity: null, unit: null });
+
+  // The recipe card with this title.
+  const card = (title) => screen.getByRole('link', { name: title }).closest('li');
+  const renderWithMatches = async (pantry) => {
+    await renderReady({ pantry, matches: [TOAST, OMELETTE] });
+    await screen.findByRole('link', { name: 'Cheese omelette' });
+  };
+
+  // Today is Nov 1 (beforeEach): egg today, butter in 2 days (both soon), bread in 4 (ok).
+  const SOON_PANTRY = [
+    dated(EGG, '2026-11-01'),
+    dated(BUTTER, '2026-11-03'),
+    dated(BREAD, '2026-11-05'),
+  ];
+
+  it('labels each recipe with the soon items it uses, and only those', async () => {
+    await renderWithMatches(SOON_PANTRY);
+
+    expect(card('Cheese omelette')).toHaveTextContent('Use soon: egg (today), butter (in 2 days)');
+    // Toast uses bread too, but bread is 4 days away: ok, not soon.
+    expect(card('Buttered toast')).toHaveTextContent('Use soon: butter (in 2 days)');
+  });
+
+  it("works the days out from today's date", async () => {
+    // One day later: egg has expired, butter is now tomorrow, bread is in 3 days.
+    vi.setSystemTime(new Date(2026, 10, 2, 12));
+    await renderWithMatches(SOON_PANTRY);
+
+    expect(card('Cheese omelette')).toHaveTextContent('Use soon: butter (tomorrow)');
+    expect(card('Buttered toast')).toHaveTextContent(
+      'Use soon: butter (tomorrow), bread (in 3 days)'
+    );
+  });
+
+  it('leaves out expired and undated items', async () => {
+    await renderWithMatches([
+      dated(EGG, '2026-10-31'),
+      dated(BUTTER, null),
+      dated(BREAD, '2026-11-02'),
+    ]);
+
+    expect(card('Cheese omelette')).not.toHaveTextContent('Use soon');
+    expect(card('Buttered toast')).toHaveTextContent('Use soon: bread (tomorrow)');
+  });
+
+  it('uses the whole pantry, whatever the pantry search shows', async () => {
+    await renderWithMatches(SOON_PANTRY);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search your pantry' }), 'bread');
+
+    expect(pantryNames()).toEqual(['bread']);
+    expect(card('Cheese omelette')).toHaveTextContent('Use soon: egg (today), butter (in 2 days)');
+  });
+
+  it('updates the label when a date is saved, without asking for matches again', async () => {
+    setPantryExpiry.mockResolvedValue(dated(EGG, '2026-11-02'));
+    await renderWithMatches([dated(EGG, null)]);
+    const user = userEvent.setup();
+    expect(card('Cheese omelette')).not.toHaveTextContent('Use soon');
+
+    await user.click(screen.getByRole('button', { name: 'Edit egg' }));
+    await user.type(screen.getByLabelText('Expiry date for egg'), '2026-11-02');
+    await user.click(screen.getByRole('button', { name: 'Save expiry date for egg' }));
+
+    await waitFor(() =>
+      expect(card('Cheese omelette')).toHaveTextContent('Use soon: egg (tomorrow)')
+    );
+    expect(getMyMatches).toHaveBeenCalledTimes(1);
   });
 });
 

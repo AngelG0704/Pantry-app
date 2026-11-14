@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { formatExpiry, expiryStatus, todayLocal, SOON_DAYS } from './dates.js';
+import { formatExpiry, daysUntil, expiryStatus, todayLocal, SOON_DAYS } from './dates.js';
 
 const originalZone = process.env.TZ;
 
@@ -40,6 +40,38 @@ describe('formatExpiry', () => {
 
     // UTC midnight on Nov 10 is still Nov 9 in New York.
     expect(new Date(Date.UTC(2026, 10, 10)).getDate()).toBe(9);
+  });
+});
+
+describe('daysUntil', () => {
+  const today = '2026-11-10';
+
+  it.each([
+    ['2026-11-10', 0],
+    ['2026-11-11', 1],
+    ['2026-11-13', 3],
+    ['2026-11-14', 4],
+    ['2026-11-09', -1],
+    ['2026-10-31', -10],
+  ])('from 2026-11-10 to %s is %i days', (expiresOn, days) => {
+    expect(daysUntil(expiresOn, today)).toBe(days);
+  });
+
+  it('counts across a month and a year boundary', () => {
+    expect(daysUntil('2026-12-01', '2026-11-30')).toBe(1);
+    expect(daysUntil('2027-01-02', '2026-12-30')).toBe(3);
+  });
+
+  it('counts Feb 29 as a day in a leap year', () => {
+    expect(daysUntil('2028-03-01', '2028-02-27')).toBe(3);
+    expect(daysUntil('2027-03-01', '2027-02-27')).toBe(2);
+  });
+
+  // Nov 1, 2026 is 25 hours long in New York; the answer must still be a whole number.
+  it('gives whole days across daylight saving time', () => {
+    process.env.TZ = 'America/New_York';
+
+    expect(daysUntil('2026-11-03', '2026-10-31')).toBe(3);
   });
 });
 

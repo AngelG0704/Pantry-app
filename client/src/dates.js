@@ -27,13 +27,19 @@ function utcMidnight(value) {
   return Date.UTC(year, month - 1, day);
 }
 
+// Whole days from today to expiresOn: 0 today, 1 tomorrow, negative once past.
+// Both arguments are "YYYY-MM-DD" (no null: callers check for a missing date first).
+export function daysUntil(expiresOn, today) {
+  return (utcMidnight(expiresOn) - utcMidnight(today)) / DAY_MS;
+}
+
 // 'none' (no date), 'expired' (before today), 'soon' (today to SOON_DAYS ahead), or 'ok'.
 // Both arguments are "YYYY-MM-DD"; today is passed in so tests don't depend on the clock.
 export function expiryStatus(expiresOn, today) {
   if (expiresOn === null) {
     return 'none';
   }
-  const daysLeft = (utcMidnight(expiresOn) - utcMidnight(today)) / DAY_MS;
+  const daysLeft = daysUntil(expiresOn, today);
   if (daysLeft < 0) {
     return 'expired';
   }
