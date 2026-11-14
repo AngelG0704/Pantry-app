@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import { installFakeResizeObserver, stubRowLayout } from '../test/fakeResizeObserver.js';
 import { MemoryRouter } from 'react-router';
 import RecipeResults from './RecipeResults.jsx';
 
@@ -269,5 +270,74 @@ describe('RecipeResults', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search recipes' }), 'scrambled');
 
     expect(screen.getByRole('list')).not.toHaveClass('scroll-frame');
+  });
+});
+
+describe('RecipeResults: measured frame', () => {
+  // Nine cards; each has its own third ingredient, so a "Use soon" label can pick one card.
+  const cards = Array.from({ length: 9 }, (_, i) => ({
+    ...PARTIAL,
+    id: 400 + i,
+    title: `Card ${i}`,
+    ingredients: ['butter', 'cheese', `spice ${i}`],
+  }));
+  // A card is 80px, 100px with a "Use soon" line; .results puts 12px between cards.
+  const heightOf = (li) => (li.querySelector('.use-soon') ? 100 : 80);
+  const FIRST_EIGHT = 8 * 80 + 7 * 12; // 724
+  const frameHeight = () => screen.getByRole('list').style.getPropertyValue('--frame-height');
+
+  beforeEach(() => {
+    installFakeResizeObserver();
+    stubRowLayout(heightOf, 12);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('sizes the frame to the first scrollAfter cards', () => {
+    renderResults({ data: cards, scrollAfter: 8 });
+
+    expect(frameHeight()).toBe(`${FIRST_EIGHT}px`);
+  });
+
+  it('grows the frame when a card among the first scrollAfter gains a "Use soon" line', () => {
+    const { rerender } = renderResults({ data: cards, scrollAfter: 8 });
+
+    rerender(
+      <MemoryRouter>
+        <RecipeResults
+          status="success"
+          data={cards}
+          error=""
+          scrollAfter={8}
+          soonItems={[{ name: 'spice 0', daysLeft: 1 }]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(frameHeight()).toBe(`${FIRST_EIGHT + 20}px`);
+  });
+
+  it('sets no height when the cards fit, or once a search leaves scrollAfter or fewer', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderResults({ data: cards.slice(0, 8), scrollAfter: 8 });
+    expect(frameHeight()).toBe('');
+    unmount();
+
+    renderResults({ data: cards, scrollAfter: 8, searchable: true });
+    expect(frameHeight()).toBe(`${FIRST_EIGHT}px`);
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search recipes' }), 'Card 1');
+    expect(frameHeight()).toBe('');
+  });
+
+  it('sets no height without ResizeObserver, so the CSS fallback applies', () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+    renderResults({ data: cards, scrollAfter: 8 });
+
+    expect(screen.getByRole('list')).toHaveClass('scroll-frame');
+    expect(frameHeight()).toBe('');
   });
 });

@@ -722,8 +722,10 @@ progress::-moz-progress-bar {
   color: var(--color-primary);
 }
 
-/* ===== Long lists (11B-2) ===== */
+/* ===== Long lists (11B-2, measured in 12A-4) ===== */
 /* Past 8 items (SCROLL_AFTER on the Pantry page) a list scrolls inside its own frame.
+   --frame-height is set inline by useScrollFrame: the measured height of the first 8
+   items, so exactly 8 show. Without it (no ResizeObserver) the fixed guess applies.
    The cap on viewport height keeps the frame from being taller than the screen. */
 .scroll-frame {
   overflow-y: auto;
@@ -731,11 +733,11 @@ progress::-moz-progress-bar {
 }
 
 .expiry-list.scroll-frame {
-  max-height: min(24rem, 60vh);  /* about 8 collapsed rows */
+  max-height: min(var(--frame-height, 24rem), 60vh);  /* fallback: about 8 collapsed rows */
 }
 
 .results.scroll-frame {
-  max-height: min(40rem, 70vh);
+  max-height: min(var(--frame-height, 40rem), 70vh);
   padding-right: var(--space-2); /* keep cards clear of the scrollbar */
 }
 

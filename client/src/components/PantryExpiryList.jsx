@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { expiryStatus, formatExpiry } from '../dates.js';
 import { UNITS, formatAmount, parseQuantity } from '../units.js';
+import { useScrollFrame } from '../hooks/useScrollFrame.js';
 
 const NO_DETAILS = { expiresOn: null, quantity: null, unit: null };
 
@@ -234,14 +235,19 @@ function PantryExpiryList({
   // Past this many rows the list scrolls inside a frame instead of growing the page.
   scrollAfter = Infinity,
 }) {
+  // The frame is exactly scrollAfter rows tall, however tall they are (null: CSS fallback).
+  const listRef = useRef(null);
+  const frameHeight = useScrollFrame(listRef, scrollAfter);
+
   if (items.length === 0) {
     return null;
   }
 
   const className = items.length > scrollAfter ? 'expiry-list scroll-frame' : 'expiry-list';
+  const style = frameHeight === null ? undefined : { '--frame-height': `${frameHeight}px` };
 
   return (
-    <ul className={className} aria-label="In your pantry">
+    <ul ref={listRef} className={className} style={style} aria-label="In your pantry">
       {items.map((item) => (
         <DetailsRow
           key={item.id}
