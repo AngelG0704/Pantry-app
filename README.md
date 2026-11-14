@@ -7,13 +7,26 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Live site:** https://pantry-client-ag.onrender.com
 
-**Status:** the full stack app (API, database, accounts, saved pantry, recipe
-matching, and a React web app) is complete, tested, hardened, and deployable
-through **v1.2.0**, with automated CI/CD and structured logging. See the
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/pantry-dark.png">
+  <img alt="Pantry page with Soon and Expired badges and a Use soon recipe label" src="docs/images/pantry-light.png">
+</picture>
+
+**Status:** the full stack app (API, database, accounts, saved pantry with amounts and
+expiry dates, recipe matching, and a React web app) is complete, tested, hardened, and
+deployed at **v1.6.0**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
 
+## Highlights
+
+- **Full stack, deployed:** React and Vite on Render, an Express API on Render, PostgreSQL on Neon.
+- **Gated releases:** `main` is protected, every change goes through a pull request, and Render deploys only after CI passes.
+- **Versioned database migrations** with a ledger table and a runner, applied in production during the API build.
+- **606 automated tests:** 205 for the server and 401 for the web app, all run in CI.
+- **Hardened API:** password hashing with bcrypt, JWT sessions, security headers, a CORS allowlist, rate limiting, and schema-validated input.
+- **Expiry-aware pantry:** amounts, expiry dates, "Expired" and "Soon" badges, sorting, and recipes labelled with the items to use soon.
 ---
 
 ## Features
@@ -927,8 +940,11 @@ check each provider's current terms.
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
 | E | End-to-end tests: Playwright in Chromium for sign-in and the pantry flows, against the real web app, API, and database, run in CI (v1.7.0) | Done |
+| 10 | Database migrations: a migration ledger and runner, schema changes applied in production (v1.3.0) | Done |
+| 11 | Pantry details: expiry dates, then amounts (quantity and unit) (v1.4.0 and v1.5.0) | Done |
+| 12 | Expiry-aware pantry: badges, sorting, recipe search by any ingredient, "Use soon" labels, measured scroll frames (v1.6.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, a post-deploy smoke test against the live site, bulk pantry operations, unit conversion, and an accessibility audit.
+Next up: end-to-end tests with Playwright. Ideas after that: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, bulk pantry operations, unit conversion, and an accessibility audit.
 
 ## Known limitations
 
