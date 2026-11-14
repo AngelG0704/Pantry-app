@@ -14,7 +14,7 @@ how many ingredients you already have and listing exactly what's missing.
 
 **Status:** the full stack app (API, database, accounts, saved pantry with amounts and
 expiry dates, recipe matching, and a React web app) is complete, tested, hardened, and
-deployed at **v1.6.0**, with automated CI/CD and structured logging. See the
+deployed at **v1.7.0**, with automated CI/CD and structured logging. See the
 [Roadmap](#roadmap).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -24,7 +24,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Full stack, deployed:** React and Vite on Render, an Express API on Render, PostgreSQL on Neon.
 - **Gated releases:** `main` is protected, every change goes through a pull request, and Render deploys only after CI passes.
 - **Versioned database migrations** with a ledger table and a runner, applied in production during the API build.
-- **606 automated tests:** 205 for the server and 401 for the web app, all run in CI.
+- **612 automated tests:** 205 for the server, 401 for the web app, and 6 end-to-end tests in a real browser, all run in CI.
 - **Hardened API:** password hashing with bcrypt, JWT sessions, security headers, a CORS allowlist, rate limiting, and schema-validated input.
 - **Expiry-aware pantry:** amounts, expiry dates, "Expired" and "Soon" badges, sorting, and recipes labelled with the items to use soon.
 ---
@@ -939,12 +939,24 @@ check each provider's current terms.
 | 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
-| E | End-to-end tests: Playwright in Chromium for sign-in and the pantry flows, against the real web app, API, and database, run in CI (v1.7.0) | Done |
 | 10 | Database migrations: a migration ledger and runner, schema changes applied in production (v1.3.0) | Done |
 | 11 | Pantry details: expiry dates, then amounts (quantity and unit) (v1.4.0 and v1.5.0) | Done |
 | 12 | Expiry-aware pantry: badges, sorting, recipe search by any ingredient, "Use soon" labels, measured scroll frames (v1.6.0) | Done |
+| E | End-to-end tests: Playwright in Chromium for sign-in and the pantry flows, against the real web app, API, and database, run in CI (v1.7.0) | Done |
 
-Next up: end-to-end tests with Playwright. Ideas after that: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, bulk pantry operations, unit conversion, and an accessibility audit.
+
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, bulk pantry operations, unit conversion, and an accessibility audit.
+
+## Decisions and lessons
+
+- **"Expires soon" is decided in the browser, never on the server.** Render runs in UTC, so a server-side "today" is wrong for most users. The browser builds today's date from its local date parts and the rule (today up to 3 days ahead) is pinned by tests.
+- **Dates and numbers cross the API as plain text and numbers.** A `DATE` read as a JavaScript Date showed the previous day, and Postgres `NUMERIC` arrives as a string. Expiry dates go out as `YYYY-MM-DD` text and quantities are cast with `::float8`. Tests pin both, in a New York time zone.
+- **Every migration must work with the code that is already live,** because Render applies migrations during the API build. New columns start nullable, and a rename or drop takes two releases.
+- **Migrations run in the build command because Render's free plan has no pre-deploy command.** A manual `pg_dump` of the hosted database comes before any migration PR is merged, and those PRs start as drafts so the merge is a deliberate step.
+- **"Use soon" only labels recipes; it never reorders them.** Reordering would have changed the server's ranking and every ordering test for a small gain.
+- **Ownership tests run with both user orders.** A lookup missing its `user_id` returned the right row in one order and another user's row in the other.
+- **Tests must fail first.** Twice a new test passed before its feature existed. Dropping an `ORDER BY` inside `ARRAY_AGG` also passed every test because the small data happened to come out sorted, so that test was tightened.
+- **The end-to-end tests can't touch real data.** The config refuses to run unless the database is named exactly `pantry_e2e`, and the test servers get their own settings, so they can't fall back to a development `.env`.
 
 ## Known limitations
 
