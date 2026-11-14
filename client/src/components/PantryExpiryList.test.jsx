@@ -1,5 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireResize,
+  installFakeResizeObserver,
+  stubRowLayout,
+} from '../test/fakeResizeObserver.js';
 import userEvent from '@testing-library/user-event';
 import PantryExpiryList from './PantryExpiryList.jsx';
 import { UNITS } from '../units.js';
@@ -542,5 +547,67 @@ describe('PantryExpiryList: long lists', () => {
     renderList({ open: [] });
 
     expect(list()).not.toHaveClass('scroll-frame');
+  });
+});
+
+describe('PantryExpiryList: measured frame', () => {
+  const list = () => screen.getByRole('list', { name: 'In your pantry' });
+  const frameHeight = () => list().style.getPropertyValue('--frame-height');
+  const nine = Array.from({ length: 9 }, (_, i) => ({ id: 10 + i, name: `item ${i}` }));
+  // A closed row is 40px, an open one (with its forms) 160px. Rows touch: no gap.
+  const heightOf = (li) => (li.querySelector('.expiry-forms') ? 160 : 40);
+  const FIRST_EIGHT = 8 * 40; // 320
+
+  beforeEach(() => {
+    installFakeResizeObserver();
+    stubRowLayout(heightOf);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('sizes the frame to the first scrollAfter rows', () => {
+    renderList({ items: nine, expiry: {}, scrollAfter: 8, open: [] });
+
+    expect(frameHeight()).toBe(`${FIRST_EIGHT}px`);
+  });
+
+  // Opening a row re-renders only that row, not the list, so it's the ResizeObserver
+  // (fired by hand here) that tells the list to measure again.
+  it('grows the frame while a row among the first scrollAfter is open', () => {
+    renderList({ items: nine, expiry: {}, scrollAfter: 8, open: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item 0' }));
+    fireResize();
+    expect(frameHeight()).toBe(`${FIRST_EIGHT + 120}px`);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close item 0' }));
+    fireResize();
+    expect(frameHeight()).toBe(`${FIRST_EIGHT}px`);
+  });
+
+  it('keeps the frame when a row below the first scrollAfter opens', () => {
+    renderList({ items: nine, expiry: {}, scrollAfter: 8, open: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item 8' }));
+    fireResize();
+
+    expect(frameHeight()).toBe(`${FIRST_EIGHT}px`);
+  });
+
+  it('sets no height when the rows fit', () => {
+    renderList({ items: nine.slice(0, 8), expiry: {}, scrollAfter: 8, open: [] });
+
+    expect(frameHeight()).toBe('');
+  });
+
+  it('sets no height without ResizeObserver, so the CSS fallback applies', () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+    renderList({ items: nine, expiry: {}, scrollAfter: 8, open: [] });
+
+    expect(list()).toHaveClass('scroll-frame');
+    expect(frameHeight()).toBe('');
   });
 });

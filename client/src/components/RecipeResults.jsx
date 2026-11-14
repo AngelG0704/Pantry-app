@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { matchesQuery } from "../search.js";
+import { useScrollFrame } from "../hooks/useScrollFrame.js";
 
 // 0 -> "today", 1 -> "tomorrow", 2 -> "in 2 days".
 function dayWords(daysLeft) {
@@ -63,6 +64,9 @@ function RecipeResults({
   soonItems = [],
 }) {
   const [query, setQuery] = useState('');
+  // The frame is exactly scrollAfter cards tall, however tall they are (null: CSS fallback).
+  const listRef = useRef(null);
+  const frameHeight = useScrollFrame(listRef, scrollAfter);
 
   if (status === 'idle') {
     return null;
@@ -105,7 +109,11 @@ function RecipeResults({
           {visible.length === 0 ? (
             <p className="status">No recipes match &ldquo;{query}&rdquo;.</p>
           ) : (
-            <ul className={visible.length > scrollAfter ? 'results scroll-frame' : 'results'}>
+            <ul
+              ref={listRef}
+              className={visible.length > scrollAfter ? 'results scroll-frame' : 'results'}
+              style={frameHeight === null ? undefined : { '--frame-height': `${frameHeight}px` }}
+            >
               {visible.map((recipe) => (
                 <RecipeCard key={recipe.id} recipe={recipe} soonItems={soonItems} />
               ))}

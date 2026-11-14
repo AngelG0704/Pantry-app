@@ -27,7 +27,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen with amounts, expiry dates, "Expired" and "Soon" badges, sorting, search, and recipes labelled with the pantry items to use soon, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 205 server tests and 381 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 205 server tests and 401 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -164,9 +164,9 @@ pantry-app/
         ├── api.js            # the one place that talks to the API
         ├── auth/             # session context, provider, token storage
         ├── components/       # picker, chips, results, forms, header
-        ├── hooks/            # data loading and state logic
+        ├── hooks/            # data loading, state logic, scroll-frame measuring
         ├── pages/            # one component per screen
-        └── test/setup.js     # test setup (test files sit beside the code they test)
+        └── test/             # test setup and a fake ResizeObserver (test files sit beside the code they test)
 ```
 
 ### Data model
@@ -352,7 +352,7 @@ address from `client/.env.development` (`VITE_API_URL`, default
 | `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
 | `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
 | `/login`, `/register` | no | Forms that show the server's validation messages beside each field |
-| `/pantry` | **yes** | Your saved pantry: each item's amount and expiry date (rows open to edit or remove), "Expired" and "Soon" badges (soon = today to 3 days ahead, by your own calendar day), a search box, a "Sort by" control (expiry, date added, or name; soonest expiry first by default), and ranked recipes that update as you tick and untick, with a search by title or any ingredient and a "Use soon: milk (today), egg (in 2 days)" label on recipes that use a soon item (the label never changes the order); long lists scroll in a frame |
+| `/pantry` | **yes** | Your saved pantry: each item's amount and expiry date (rows open to edit or remove), "Expired" and "Soon" badges (soon = today to 3 days ahead, by your own calendar day), a search box, a "Sort by" control (expiry, date added, or name; soonest expiry first by default), and ranked recipes that update as you tick and untick, with a search by title or any ingredient and a "Use soon: milk (today), egg (in 2 days)" label on recipes that use a soon item (the label never changes the order); past 8 items, each list scrolls in a frame exactly 8 items tall, whatever their height (an open row grows it), never taller than the screen |
 | `/account` | **yes** | Your email and join date |
 | anything else | no | A "Page not found" screen |
 
@@ -525,7 +525,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **205 automated tests** and runs against a separate database, so it never touches your development data. The web app has **381 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **205 automated tests** and runs against a separate database, so it never touches your development data. The web app has **401 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
 
 ### One-time setup
 
@@ -614,9 +614,9 @@ Before each test the page is emptied and mocks are reset.
 | Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
 | Auth pages | `LoginPage.test.jsx` (6), `RegisterPage.test.jsx` (11), `AccountPage.test.jsx` (2) | Redirects, per-field errors, the submitting state, the creation date |
 | Search | `HomePage.test.jsx` (18), `useSearchState.test.js` (9), `useRecipeMatches.test.js` (8), `useIngredients.test.js` (6) | Picking, the 50-ingredient limit, searching, aborted requests, error and retry |
-| Pantry | `PantryPage.test.jsx` (48), `PantryExpiryList.test.jsx` (41), `usePantry.test.js` (29), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, dates and amounts (numbers not strings, both fields kept), `addedAt` kept from every response, collapsing rows, two-step remove, scroll frames, search, "Expired" and "Soon" badges from the local day (with the clock fixed), each sort order, search and sort together, a just-ticked item counting as newest, the "Use soon" label (soon items only, from the whole pantry whatever the search shows, following the clock, updated when a date is saved) |
-| Helpers | `dates.test.js` (32), `sort.test.js` (12), `units.test.js` (20), `search.test.js` (3) | Expiry dates show the same day in every time zone; whole days between two dates (month, year, leap day, daylight saving); expiry status at each boundary; today as the local calendar day; every sort order, undated items last, ties by name, the input never reordered; amounts and units; search matching |
-| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (21) | Display, marks, errors, retry, server ranking order, no injected markup, search by title or any ingredient, the "Use soon" label (day words, soonest first then A–Z, only on cards that use a soon item, never reordering the cards) |
+| Pantry | `PantryPage.test.jsx` (48), `PantryExpiryList.test.jsx` (46), `usePantry.test.js` (29), `useMyMatches.test.js` (11), `usePantryNames.test.js` (8) | Optimistic updates, rollback, the `404` rules, match refreshes, no names leaking between users, dates and amounts (numbers not strings, both fields kept), `addedAt` kept from every response, collapsing rows, two-step remove, scroll frames (8 rows tall, growing while one of them is open), search, "Expired" and "Soon" badges from the local day (with the clock fixed), each sort order, search and sort together, a just-ticked item counting as newest, the "Use soon" label (soon items only, from the whole pantry whatever the search shows, following the clock, updated when a date is saved) |
+| Helpers | `dates.test.js` (32), `sort.test.js` (12), `units.test.js` (20), `search.test.js` (3), `useScrollFrame.test.js` (11) | Expiry dates show the same day in every time zone; whole days between two dates (month, year, leap day, daylight saving); expiry status at each boundary; today as the local calendar day; every sort order, undated items last, ties by name, the input never reordered; amounts and units; search matching; the scroll frame's measured height (gaps included, rounded up, measured again on a resize or a render, one observer at a time, none without `ResizeObserver`) |
+| Recipes | `RecipePage.test.jsx` (10), `useRecipe.test.js` (11), `RecipeResults.test.jsx` (25) | Display, marks, errors, retry, server ranking order, no injected markup, search by title or any ingredient, the "Use soon" label (day words, soonest first then A–Z, only on cards that use a soon item, never reordering the cards), a scroll frame 8 cards tall that follows the search and a card growing |
 | Shared components | `IngredientPicker.test.jsx` (9), `SelectedIngredients.test.jsx` (6), `FormField.test.jsx` (4), `MaxMissingSelect.test.jsx` (3), `PantrySortSelect.test.jsx` (3), `SiteHeader.test.jsx` (4), `NotFoundPage.test.jsx` (1) | Filtering, limits, accessible labels and errors, navigation |
 
 The server tests pin which fields the API sends; the client tests pin how they are
@@ -650,7 +650,7 @@ Two jobs run in parallel, each on a fresh Linux machine:
 
 |---|---|
 | **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 205 tests |
-| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 381 web app tests, and builds the production bundle |
+| **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 401 web app tests, and builds the production bundle |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests

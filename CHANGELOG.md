@@ -4,14 +4,15 @@ All notable changes to this project will be further documented in this file, see
 for a more broad information about this project.
 
 ## 11-13-2026
-### Version 1.6.0: Expiry-aware pantry (in progress)
+### Version 1.6.0: Expiry-aware pantry
 
 The pantry learns to sort and highlight by expiry, and recipes learn which of your
 ingredients they use. This entry covers the server part (12A-1, PR #50, deployed on
 11-12-2026), the `POST /api/pantry` change (12A-2a, PR #52), the Pantry page's badges
-and sorting (12A-2: code in PR #53, its README and CHANGELOG in PR #54), and recipe
-search by any ingredient with the "Use soon" label (12A-3). Measured scroll heights
-(12A-4) follow. No migration: every new field comes from data that was already stored.
+and sorting (12A-2: code in PR #53, its README and CHANGELOG in PR #54), recipe search
+by any ingredient with the "Use soon" label (12A-3, PR #55), and scroll frames sized to
+their first 8 items (12A-4). No migration: every new field comes from data that was
+already stored.
 
 ### Added
 
@@ -45,7 +46,10 @@ search by any ingredient with the "Use soon" label (12A-3). Measured scroll heig
   `--color-warning` in the stylesheet (`light-dark(#8a5300, #f0b45a)`: 5.2:1 and 6.3:1
   against its badge tint; danger badges are 5.6:1 and 5.3:1), also used by the
   `.use-soon` chip.
-- **9 server tests** (196 → 205) and **68 web app tests** (313 → 381).
+- The `useScrollFrame(listRef, scrollAfter)` hook, which returns the measured height in
+  px or `null`; the `--frame-height` CSS variable it sets; and `src/test/fakeResizeObserver.js`
+  for the tests.
+- **9 server tests** (196 → 205) and **88 web app tests** (313 → 401).
 
 ### Changed
 
@@ -65,6 +69,13 @@ search by any ingredient with the "Use soon" label (12A-3). Measured scroll heig
 - `expiryStatus` counts days with the new `daysUntil`, so the badges and the label's
   "in N days" share one calculation. The Pantry page reads `today` once per render and
   passes the same value to the list and the label.
+- **Scroll frames are measured.** Past 8 items, the pantry list and the recipe results
+  scroll in a frame exactly 8 items tall, whatever those items' heights: an open row, a
+  card with "You still need" or "Use soon", or text wrapping on a narrow screen. The
+  frame used to be a fixed guess (`24rem` and `40rem`) that could cut an item in half or
+  show more or fewer than 8. A row opened among the first 8 grows the frame, so its forms
+  are never cut off. The frame is still at most 60% (pantry) or 70% (recipes) of the
+  screen's height.
 
 ### Notes
 
@@ -115,6 +126,24 @@ search by any ingredient with the "Use soon" label (12A-3). Measured scroll heig
 - The recipe fixtures in the web app tests got `ingredients` first, in a change of its
   own: spreading a missing field (`...recipe.ingredients`) throws, so the search change
   would otherwise have failed tests for the wrong reason.
+- The frame height runs from the top of item 1 to the bottom of item 8
+  (`getBoundingClientRect`), so the gaps between cards are included and scrolling
+  doesn't change it. It is rounded up and set inline as `--frame-height`; the CSS keeps
+  the screen cap and the old guess as the fallback:
+  `max-height: min(var(--frame-height, 24rem), 60vh)`. Without `ResizeObserver` no
+  height is set, so the fallback applies.
+- The `ResizeObserver` watches the first 8 items, not the list: once the frame is
+  capped, a row opening inside it doesn't change the list's own size. Opening a row also
+  re-renders only that row, not the list, so the observer is what triggers the new
+  measurement.
+- The hook measures after every render (`useLayoutEffect` with no dependency list, so
+  before paint), because a sort or a search can change which items come first without
+  changing how many there are. Setting the same height again is a no-op, so it can't
+  loop; a test pins that, and oxlint's `exhaustive-deps` warning is off for that line.
+- jsdom does no layout and has no `ResizeObserver`. The new tests use a fake observer
+  they fire by hand and stubbed `getBoundingClientRect` values (the first row starts at
+  100, not 0, so the hook must subtract it). The existing scroll-frame tests take the
+  fallback path and pass unchanged.
 
 
 ## 11-08-2026
