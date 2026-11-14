@@ -27,7 +27,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 - **Matching from your saved pantry**, updating live as you add and remove ingredients
 - **A web app** (React) with an ingredient picker, ranked results, recipe details,
   and a pantry screen with amounts, expiry dates, "Expired" and "Soon" badges, sorting, search, and recipes labelled with the pantry items to use soon, in a warm theme with full light and dark modes
-- **A tested, hardened stack:** 205 server tests and 401 web app tests, rate limiting, a CORS allowlist, security headers, and schema-validated input
+- **A tested, hardened stack:** 205 server tests, 401 web app tests, and 6 end-to-end tests in a real browser, rate limiting, a CORS allowlist, security headers, and schema-validated input
 - **Production-ready:** health checks, graceful shutdown, safety checks on
   production settings, structured logs with request ids, and a CI pipeline that
   gates deployment
@@ -35,7 +35,6 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 ## Tech stack
 
 | Layer | Technology |
-
 |---|---|
 | Frontend | React, Vite, React Router |
 | Runtime | Node.js 20.10+ (ES modules) |
@@ -47,7 +46,7 @@ Version history lives in [CHANGELOG.md](CHANGELOG.md).
 | Security | `helmet` (headers), `cors` (origin allowlist), `express-rate-limit` |
 | Logging | `pino` and `pino-http` (structured JSON logs) |
 | Configuration | `dotenv` (server), Vite environment files (client) |
-| Automated tests | Node's built-in test runner and `supertest` (server); Vitest, jsdom, and React Testing Library (client) |
+| Automated tests | Node's built-in test runner and `supertest` (server); Vitest, jsdom, and React Testing Library (client); Playwright with Chromium (end-to-end) |
 | Manual API testing | Postman |
 | CI/CD | GitHub Actions, Dependabot |
 | Hosting | Render (API and static site), Neon (PostgreSQL) |
@@ -77,7 +76,6 @@ request logger → helmet → cors → (health checks) → rate limit → JSON p
 ```
 
 | Stage | Job |
-
 |---|---|
 | **request logger** | Assigns a request id, returns it in `X-Request-Id`, and writes one log line per request |
 | **helmet** | Adds security headers to every response and removes `X-Powered-By` |
@@ -93,7 +91,6 @@ request logger → helmet → cors → (health checks) → rate limit → JSON p
 ### Server layers
 
 | Layer | Job | Knows about HTTP? | Knows about SQL? |
-
 |---|---|---|---|
 | **Routes** | Map a method and URL to a chain of middleware and a controller | Yes | No |
 | **Middleware** | Cross-cutting concerns: logging, authentication, validation, rate limiting, errors | Yes | No |
@@ -131,6 +128,10 @@ pantry-app/
 │   ├── workflows/ci.yml      # tests, lint, and build on every push and pull request
 │   └── dependabot.yml        # weekly dependency and action updates
 ├── postman/                  # Postman collection and environment
+├── e2e/
+│   ├── package.json          # Playwright, kept apart from the server and client dependencies
+│   ├── playwright.config.js  # the database guard; starts the API (3100) and web app (5174)
+│   └── tests/                # helpers.js and one *.spec.js per flow
 ├── server/
 │   ├── .env                  # secrets (never committed)
 │   ├── .env.test             # test settings (never committed)
@@ -255,7 +256,6 @@ node -e "console.log(crypto.randomBytes(48).toString('hex'))"
 Optional settings, all validated at startup:
 
 | Variable | Default | Purpose |
-
 |---|---|---|
 | `PORT` | `3000` | The port to listen on; hosting platforms set this for you |
 | `NODE_ENV` | `development` | Set to `production` when deployed; this switches on stricter startup checks |
@@ -321,7 +321,6 @@ address from `client/.env.development` (`VITE_API_URL`, default
 **Server** (`server/`):
 
 | Script | What it does |
-
 |---|---|
 | `npm run dev` | Starts the server and restarts on code changes (`node --watch`) |
 | `npm start` | Starts the server |
@@ -333,7 +332,6 @@ address from `client/.env.development` (`VITE_API_URL`, default
 **Client** (`client/`):
 
 | Script | What it does |
-
 |---|---|
 | `npm run dev` | Starts the Vite dev server on port 5173 |
 | `npm run build` | Builds the production bundle into `dist/` |
@@ -342,12 +340,17 @@ address from `client/.env.development` (`VITE_API_URL`, default
 | `npm test` | Runs the web app's tests once (what CI runs) |
 | `npm run test:watch` | Re-runs the web app's tests whenever you save |
 
+**End-to-end** (`e2e/`):
+
+| Script | What it does |
+|---|---|
+| `npm test` | Runs the end-to-end tests (`playwright test`); needs `E2E_DATABASE_URL`, see "End-to-end tests" |
+
 ---
 
 ## The web app
 
 | Address | Login | What it shows |
-
 |---|---|---|
 | `/` | no | Search and tick ingredients, choose how many missing ones are OK, and see ranked recipes |
 | `/recipes/:id` | no | A recipe's ingredients and instructions; ingredients are marked "you have this" or "you need this" using your saved pantry when logged in |
@@ -385,7 +388,6 @@ The server listens on port 3000 by default (or the `PORT` it is given). All
 responses are JSON.
 
 | Method | Path | Auth | Description |
-
 |---|---|---|---|
 | GET | `/api/health/live` | none | Liveness: is the process running? |
 | GET | `/api/health` | none | Readiness: is the database reachable? (`200` or `503`) |
@@ -485,7 +487,6 @@ cannot see or change another user's pantry.
 ## Security and hardening
 
 | Protection | How it works |
-
 |---|---|
 | **Brute-force limits** | 10 failed logins per 15 minutes per IP, 20 registrations per hour, 300 requests per 15 minutes overall. A blocked client gets `429` with `Retry-After`. Counters live in server memory. |
 | **CORS allowlist** | Only origins in `CORS_ORIGINS` can read responses from a browser. This protects users, not the server, and is not a substitute for authentication. |
@@ -525,7 +526,7 @@ is where `have` comes from: ids in the URL, or the user's saved pantry.
 
 ## Testing
 
-The server has **205 automated tests** and runs against a separate database, so it never touches your development data. The web app has **401 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`.
+The server has **205 automated tests** and runs against a separate database, so it never touches your development data. The web app has **401 tests** that run without a server or a network. Run them separately: `npm test` in `server/` and in `client/`. On top of both, **6 end-to-end tests** drive a real browser against the real web app, API, and a database of their own (see "End-to-end tests" below).
 
 ### One-time setup
 
@@ -568,7 +569,6 @@ npm test -- --test-name-pattern="tampered"
 ### What's covered
 
 | File | Tests | What it guards |
-
 |---|---|---|
 | `catalog.test.js` | 7 | Public reads, id validation, JSON 404s, recipe field names |
 | `auth.test.js` | 25 | Hashing, login rules, token forgery, expiry, deleted accounts, creation date |
@@ -608,7 +608,6 @@ replaced in the `api.js` tests, and `api.js` or `useAuth` is replaced in the res
 Before each test the page is emptied and mocks are reset.
 
 | Area | Files (tests) | What it guards |
-
 |---|---|---|
 | API layer | `api.test.js` (22) | Request building, `ApiError`, network and abort handling, the unauthorized handler, partial-update bodies |
 | Session | `AuthProvider.test.jsx` (11), `RequireAuth.test.jsx` (3), `tokenStorage.test.js` (5), `formErrors.test.js` (4) | Session states, login, register, logout, token storage that never throws, protected pages, form error mapping |
@@ -621,11 +620,76 @@ Before each test the page is emptied and mocks are reset.
 
 The server tests pin which fields the API sends; the client tests pin how they are
 read. A field renamed on one side only is caught by the side that still pins the old
-name, so change both together.
+name, so change both together. For the flows they cover, the end-to-end tests catch it
+either way, because they read the real API through the real screens.
 
 Tests sit next to the code they test, so a file such as `HomePage.jsx` has
 `HomePage.test.jsx` beside it. Pages and hooks are tested twice where it matters: once
 with hand-built input, and once together with the real hooks.
+
+### End-to-end tests
+
+The suites above test each side alone: the server tests call the API directly, and the
+web app tests replace the API with mocks. The end-to-end tests in `e2e/` drive a real
+browser (Chromium, through Playwright) against the real web app, the real API, and a
+database of their own, so they catch what neither suite can: the two sides disagreeing.
+
+**One-time setup:**
+
+1. Create the end-to-end database (separate from your dev and test databases):
+
+   ```bash
+   psql -U postgres -c "CREATE DATABASE pantry_e2e;"
+   ```
+
+2. Install Playwright and its browser:
+
+   ```bash
+   cd e2e
+   npm install
+   npx playwright install chromium
+   ```
+
+**Running** (PowerShell; in bash, put `E2E_DATABASE_URL=...` in front of the command):
+
+```powershell
+$env:E2E_DATABASE_URL = "postgres://USER:PASSWORD@localhost:5432/pantry_e2e"
+cd e2e
+npx playwright test
+npx playwright test pantry-sort    # one file
+```
+
+Playwright starts both servers itself and stops them afterwards: the API on port
+**3100** (after `npm run db:seed`, which creates the tables and loads the recipes) and
+the web app on **5174**, pointed at that API. Dev servers on 3000 and 5173 are never
+used, and a run fails if something is already on 3100 or 5174.
+
+| File | What it checks |
+|---|---|
+| `smoke.spec.js` | The home page loads the ingredient list from the API (web app, API, CORS, and seeded database all working) |
+| `auth.spec.js` | Register, log out, log back in with the same credentials, still logged in after a reload |
+| `pantry-matching.spec.js` | Ticked items are saved and listed; recipe cards show the exact counts from the API ("3 of 3 ingredients", "2 of 3") and what is still needed |
+| `pantry-expiry.spec.js` | With the browser clock fixed to 2026-11-10 in New York: "Soon" for today and for the 3-day boundary, "Expired" for yesterday, and the "Use soon" label without the expired item |
+| `pantry-sort.spec.js` | "Expiry: soonest first" and "Expiry: latest first", undated items last in both |
+| `pantry-isolation.spec.js` | Two users in separate browser contexts never see each other's pantry, in either direction |
+
+**How they stay safe and readable:**
+
+- **A guard rail:** `playwright.config.js` refuses to run unless `E2E_DATABASE_URL` names
+  a database called exactly `pantry_e2e`, before any server starts. It also passes
+  `DATABASE_URL` and every other server setting itself, so `server/.env` (your dev
+  database) can never fill a gap.
+- **No shared state:** every test registers its own user with a unique email, so the
+  tests need no reset and never depend on each other. `pantry_e2e` keeps the test users;
+  drop and recreate it whenever you like.
+- **Found like a user finds things:** by role and label, as in the web app tests. The
+  assertions retry until true (up to 5 seconds), and no test sleeps for a fixed time.
+- **When one fails:** the error names the locator it waited for, and
+  `e2e/test-results/<test>/error-context.md` holds a snapshot of the page at that moment
+  (it often shows *why*, such as an error message on screen). In CI, the HTML report is
+  uploaded as an artifact, with a trace of the retry.
+- **Each test was seen failing** for a bug caused on purpose before it was trusted; the
+  1.7.0 entry in [CHANGELOG.md](CHANGELOG.md) records each break and what caught it.
 
 ### Manual testing
 
@@ -644,18 +708,18 @@ regressions; Postman is for exploring.
 ### The pipeline
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.
-Two jobs run in parallel, each on a fresh Linux machine:
+Three jobs run in parallel, each on a fresh Linux machine:
 
 | Job | What it does |
-
 |---|---|
 | **Server tests** | Starts PostgreSQL 16, installs from the lockfile, writes its own `.env.test` (throwaway values only), and runs all 205 tests |
 | **Client lint, test, and build** | Installs from the lockfile, runs oxlint, runs the 401 web app tests, and builds the production bundle |
+| **End-to-end tests** | Starts PostgreSQL 16 with a `pantry_e2e` database, installs the server, client, and e2e lockfiles and Chromium, and runs the 6 Playwright tests (which start the API and the web app themselves). A failing test is retried once; if it still fails, the HTML report (with a trace of the retry) is uploaded as an artifact for 7 days |
 
 The workflow has read-only repository permissions, and a newer push cancels an
 older run of the same branch. `.github/dependabot.yml` opens weekly pull requests
-for outdated server packages, client packages, and GitHub Actions; they run the
-same checks.
+for outdated server packages, client packages, end-to-end packages (Playwright), and
+GitHub Actions; they run the same checks.
 
 Because CI starts from a clean machine, it catches things your laptop hides: a file
 you forgot to commit, a missing setting, or a filename casing mistake (Windows
@@ -664,9 +728,10 @@ ignores case; Linux does not).
 ### Recommended workflow
 
 1. Make changes on a branch, push it, and open a pull request.
-2. Wait for both checks to pass.
-3. Merge into `main`. Render then deploys the commit, but only if its checks passed.
-4. Keep **Server tests** and **Client lint and build** as required checks for `main`, so a failing check blocks the merge.
+2. Wait for all three checks to pass.
+3. Merge into `main`. Render then deploys the commit, but only if its checks passed,
+   so a failing end-to-end run on `main` holds the deploy too.
+4. Keep **Server tests** and **Client lint and build** as required checks for `main`, so a failing check blocks the merge. Add **End-to-end tests** as a third once it has been green on a few pull requests.
 
 In your GitHub repository settings, require both checks before merging into `main`
 (if your plan supports it for private repositories).
@@ -711,7 +776,6 @@ and compare row counts. `pg_dump` must be the same major version as the server o
 written to Git):
 
 | Variable | Value |
-
 |---|---|
 | `NODE_ENV` | `production` (set in the blueprint) |
 | `TRUST_PROXY` | `1`, matching the one proxy hop on Render (verify this once; see below) |
@@ -722,7 +786,6 @@ written to Git):
 **Web app service:**
 
 | Variable | Value |
-
 |---|---|
 | `VITE_API_URL` | The API's `https://` address. **This is embedded when the app is built**, so changing it requires a rebuild (a manual deploy). |
 
@@ -811,7 +874,6 @@ check each provider's current terms.
 ## Troubleshooting
 
 | Symptom | Likely cause and fix |
-
 |---|---|
 | `password authentication failed` | The password in `DATABASE_URL` doesn't match your PostgreSQL user. Check it with `psql`, then restart the server. |
 | `client password must be a string` | `DATABASE_URL` is missing from the environment, or lacks a password. Check `.env`'s location (`server/.env`) and name, then restart. |
@@ -843,6 +905,10 @@ check each provider's current terms.
 | `npm error Missing script: "test"` | You are in the wrong folder, or on a branch without the test setup. Run it in `client/` or `server/`. |
 | `vitest: not found` in CI | The lockfile doesn't include the test packages. Run `npm install` in `client/` and commit `package-lock.json`. |
 | A client test passes locally but fails in CI | A hardcoded date or locale, or a filename casing mismatch (Linux is case-sensitive). |
+| `E2E_DATABASE_URL is not set` or `must point at a database named pantry_e2e` | The end-to-end guard: set `E2E_DATABASE_URL` to the `pantry_e2e` database in this window (see "End-to-end tests"). |
+| `Executable doesn't exist at ...ms-playwright...` | Chromium isn't installed for this Playwright version. Run `npx playwright install chromium` in `e2e/`. |
+| `... is already used, make sure that nothing is running on the port/url` | Something is on port 3100 or 5174 (often an earlier run that didn't exit). The end-to-end tests start their own servers; close it and run again. |
+| An end-to-end test times out on a locator | Open `e2e/test-results/<test>/error-context.md`: the page snapshot usually shows why (an error alert, a still-loading page, the wrong user). |
 
 ---
 
@@ -860,14 +926,15 @@ check each provider's current terms.
 | 8 | Shipping: production readiness, deployment, CI/CD, logging and monitoring | Done |
 | 9 | Frontend tests: Vitest, React Testing Library, tests for every screen, hook, and component, run in CI | Done |
 | V | Visual refresh: design tokens, light and dark themes, header, controls, cards, and pages (v1.2.0) | Done |
+| E | End-to-end tests: Playwright in Chromium for sign-in and the pantry flows, against the real web app, API, and database, run in CI (v1.7.0) | Done |
 
-Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, end-to-end tests, bulk pantry operations, unit conversion, and an accessibility audit.
+Ideas for what could come next: an error-tracking service, a staging environment, cookie-based sessions with refresh tokens, a post-deploy smoke test against the live site, bulk pantry operations, unit conversion, and an accessibility audit.
 
 ## Known limitations
 
 - On the free hosting plans, the API and the database both sleep when idle, so the first request after a quiet period is slow.
 - No staging environment: a commit that passes CI deploys to production.
-- The web app has unit and integration tests for every screen, hook, and component, but no test renders the whole `App`, and nothing runs the real client against the real API, so a field renamed on one side only is caught only if both sides' tests pin the same name.
+- The web app has unit and integration tests for every screen, hook, and component, and 6 end-to-end tests run the real web app against the real API for sign-in and the main pantry flows (matching, expiry badges and "Use soon", sorting, and keeping users apart). The rest (the recipe page, the home page search, the account page, pantry amounts, removing items) is joined to the API only through each side's own tests, so a field renamed on one side there is caught only if both sides' tests pin the same name. The end-to-end tests run in Chromium only.
 - No error-tracking service, metrics, or dashboards: monitoring is an uptime ping with email alerts, plus searchable logs on the hosting platform.
 - Migrations run during the API's build, and there are no down (undo) migrations: a mistake is fixed with a new migration. Backups of the hosted database are manual (`pg_dump`, see "Database migrations on deploy"), not scheduled.
 - The token is stored in `localStorage`, where any script on the page could read it. Tokens cannot be revoked before they expire, and there is no refresh token, password reset, or email verification.

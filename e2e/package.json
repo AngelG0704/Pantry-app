@@ -1,0 +1,16 @@
+{
+  "name": "pantry-app-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests: a real browser against the real client, API and database",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}
