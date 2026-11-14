@@ -8,7 +8,7 @@ import RecipeResults from '../components/RecipeResults.jsx';
 import PantryExpiryList from '../components/PantryExpiryList.jsx';
 import PantrySortSelect from '../components/PantrySortSelect.jsx';
 import { matchesQuery } from '../search.js';
-import { todayLocal } from '../dates.js';
+import { daysUntil, expiryStatus, todayLocal } from '../dates.js';
 import { DEFAULT_SORT, sortPantry } from '../sort.js';
 
 // Both lists on this page scroll inside a frame once they pass this many items.
@@ -35,6 +35,19 @@ function PantryPage({ search }) {
 
   // Filter first, then sort what is left.
   const sortedPantry = sortPantry(visiblePantry, pantry.details, sortKey);
+
+  // Read on every render: past midnight it updates on the next re-render only.
+  const today = todayLocal();
+
+  // For the "Use soon" label on recipes: soon items only (not expired, not undated).
+  // From the whole pantry, not visiblePantry: searching the list must not change the labels.
+  const soonItems = inPantry
+    .map((ingredient) => ({
+      name: ingredient.name,
+      expiresOn: pantry.details[ingredient.id]?.expiresOn ?? null,
+    }))
+    .filter((item) => expiryStatus(item.expiresOn, today) === 'soon')
+    .map((item) => ({ name: item.name, daysLeft: daysUntil(item.expiresOn, today) }));
 
   const loading = catalog.status === 'loading' || pantry.status === 'loading';
   const ready = catalog.status === 'success' && pantry.status === 'success';
@@ -92,8 +105,7 @@ function PantryPage({ search }) {
                   items={sortedPantry}
                   expiry={pantry.expiry}
                   details={pantry.details}
-                  // Read on every render: past midnight it updates on the next re-render only.
-                  today={todayLocal()}
+                  today={today}
                   pendingIds={pantry.pendingIds}
                   onSave={pantry.setExpiry}
                   onSaveAmount={pantry.updateItem}
@@ -126,6 +138,7 @@ function PantryPage({ search }) {
             error={matches.error}
             scrollAfter={SCROLL_AFTER}
             searchable
+            soonItems={soonItems}
           />
         </>
       )}

@@ -8,10 +8,10 @@ for a more broad information about this project.
 
 The pantry learns to sort and highlight by expiry, and recipes learn which of your
 ingredients they use. This entry covers the server part (12A-1, PR #50, deployed on
-11-12-2026), the `POST /api/pantry` change (12A-2a, PR #52), and the Pantry page's
-badges and sorting (12A-2). Recipe search by any ingredient (12A-3) and measured
-scroll heights (12A-4) follow. No migration: every new field comes from data that was
-already stored.
+11-12-2026), the `POST /api/pantry` change (12A-2a, PR #52), the Pantry page's badges
+and sorting (12A-2: code in PR #53, its README and CHANGELOG in PR #54), and recipe
+search by any ingredient with the "Use soon" label (12A-3). Measured scroll heights
+(12A-4) follow. No migration: every new field comes from data that was already stored.
 
 ### Added
 
@@ -33,11 +33,19 @@ already stored.
   by name A–Z, and an ingredient that was just ticked (the server hasn't answered yet)
   counts as the newest. The search filters first, then what is left is sorted. The
   control is hidden for an empty pantry and stays when a search matches nothing.
-- `sort.js` (`SORT_OPTIONS`, `DEFAULT_SORT`, `sortPantry`); `expiryStatus`, `todayLocal`,
-  and `SOON_DAYS` in `dates.js`; the `PantrySortSelect` component; `--color-warning` in
-  the stylesheet (`light-dark(#8a5300, #f0b45a)`: 5.2:1 and 6.3:1 against its badge tint;
-  danger badges are 5.6:1 and 5.3:1).
-- **9 server tests** (196 → 205) and **47 web app tests** (313 → 360).
+- **Web app: "Use soon" label on recipes.** On the Pantry page, a recipe that uses a
+  pantry item expiring soon gets one amber line, such as
+  "Use soon: milk (today), egg (in 2 days)": `today`, `tomorrow`, or `in N days`,
+  soonest first, ties by name A–Z. Only soon items count (today up to 3 days ahead, the
+  same rule as the badges); expired and undated items are left out. The label never
+  changes the order the server sent, and the home page shows none.
+- `sort.js` (`SORT_OPTIONS`, `DEFAULT_SORT`, `sortPantry`); `daysUntil`, `expiryStatus`,
+  `todayLocal`, and `SOON_DAYS` in `dates.js`; the `PantrySortSelect` component; a
+  `soonItems` prop on `RecipeResults` (`[{ name, daysLeft }]`, default none);
+  `--color-warning` in the stylesheet (`light-dark(#8a5300, #f0b45a)`: 5.2:1 and 6.3:1
+  against its badge tint; danger badges are 5.6:1 and 5.3:1), also used by the
+  `.use-soon` chip.
+- **9 server tests** (196 → 205) and **68 web app tests** (313 → 381).
 
 ### Changed
 
@@ -50,6 +58,13 @@ already stored.
   the same as before.
 - `usePantry` keeps `addedAt` in `details`, including from the `POST` response, stored
   once the request has answered.
+- **Recipe search on the Pantry page** finds a recipe by its title or by any of its
+  ingredients, ones you have as well as missing ones. It used to look at the title and
+  the missing ingredients only. It now reads the `ingredients` field the matches API
+  has sent since 12A-1.
+- `expiryStatus` counts days with the new `daysUntil`, so the badges and the label's
+  "in N days" share one calculation. The Pantry page reads `today` once per render and
+  passes the same value to the list and the label.
 
 ### Notes
 
@@ -88,6 +103,18 @@ already stored.
   less". Sorting before or after filtering gives the same list (filtering keeps order,
   and each item's place depends only on itself), so the page filters first, the cheaper
   of the two.
+- The "Use soon" label only labels, by choice: re-ranking by expiry would have changed
+  the server's order, the ordering tests, and "ranking unchanged". The server still
+  sends no expiry on matches; the page works the label out from `ingredients`, the
+  pantry's dates, and the local day.
+- The label is built from the whole pantry, not the searched list, so typing in
+  "Search your pantry" never changes the recipe labels.
+- `RecipeResults` takes `{ name, daysLeft }` rather than dates, so it needs no `today`
+  of its own. The prop is called `soonItems`, not `useSoon`: a name starting with
+  `use` reads like a React hook.
+- The recipe fixtures in the web app tests got `ingredients` first, in a change of its
+  own: spreading a missing field (`...recipe.ingredients`) throws, so the search change
+  would otherwise have failed tests for the wrong reason.
 
 
 ## 11-08-2026

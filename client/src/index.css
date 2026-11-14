@@ -805,3 +805,18 @@ progress::-moz-progress-bar {
 .list-search select {
   margin: var(--space-2) 0 0 var(--space-2);
 }
+
+/* ===== "Use soon" label on recipe cards (12A-3) ===== */
+/* The same amber chip as the "Soon" badge, so the two read as one idea. Cards sit on
+   --color-surface, the background the --color-warning contrast was checked against.
+   fit-content keeps the chip as wide as its text; a long list still wraps inside the card. */
+.card .use-soon {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-surface));
+}

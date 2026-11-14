@@ -13,6 +13,7 @@ const COMPLETE = {
   totalCount: 2,
   matchScore: 1,
   missingIngredients: [],
+  ingredients: ['butter', 'egg'],
 };
 
 const PARTIAL = {
@@ -23,6 +24,7 @@ const PARTIAL = {
   totalCount: 3,
   matchScore: 0.67,
   missingIngredients: ['cheese'],
+  ingredients: ['butter', 'cheese', 'egg'],
 };
 
 const NO_PREP = {
@@ -33,6 +35,7 @@ const NO_PREP = {
   totalCount: 3,
   matchScore: 0.33,
   missingIngredients: ['bread', 'salt'],
+  ingredients: ['bread', 'rice', 'salt'],
 };
 
 function renderResults(props = {}) {
@@ -157,6 +160,26 @@ describe('RecipeResults', () => {
     expect(screen.getAllByRole('link')).toHaveLength(3);
   });
 
+  it('also finds a recipe by an ingredient you already have', async () => {
+    const user = userEvent.setup();
+    renderResults({ status: 'success', data: [COMPLETE, PARTIAL, NO_PREP], searchable: true });
+    const search = screen.getByRole('searchbox', { name: 'Search recipes' });
+
+    // rice: in Mystery bowl's ingredients, but not in its title or its missing list.
+    await user.type(search, 'rice');
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Mystery bowl',
+    ]);
+
+    // butter: had by two recipes, in neither title; they keep the server's order.
+    await user.clear(search);
+    await user.type(search, 'Butter');
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Scrambled eggs',
+      'Cheese omelette',
+    ]);
+  });
+
   it('says so when no recipe matches the search', async () => {
     const user = userEvent.setup();
     renderResults({ status: 'success', data: [COMPLETE, PARTIAL], searchable: true });
@@ -165,6 +188,76 @@ describe('RecipeResults', () => {
 
     expect(screen.getByText('No recipes match “pizza”.')).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  describe('"Use soon" label', () => {
+    it('lists the soon ingredients a recipe uses, with today / tomorrow / in N days', () => {
+      const soonItems = [
+        { name: 'rice', daysLeft: 3 },
+        { name: 'butter', daysLeft: 0 },
+        { name: 'egg', daysLeft: 1 },
+      ];
+      renderResults({ data: [COMPLETE, NO_PREP], soonItems });
+
+      expect(screen.getByText('Use soon: butter (today), egg (tomorrow)')).toBeInTheDocument();
+      expect(screen.getByText('Use soon: rice (in 3 days)')).toBeInTheDocument();
+    });
+
+    it('puts the soonest first, whatever order the items arrive in', () => {
+      // Expected order differs from both the input order and A–Z.
+      renderResults({
+        data: [COMPLETE],
+        soonItems: [
+          { name: 'butter', daysLeft: 2 },
+          { name: 'egg', daysLeft: 0 },
+        ],
+      });
+
+      expect(screen.getByText('Use soon: egg (today), butter (in 2 days)')).toBeInTheDocument();
+    });
+
+    it('breaks a tie by name, A–Z', () => {
+      renderResults({
+        data: [COMPLETE],
+        soonItems: [
+          { name: 'egg', daysLeft: 1 },
+          { name: 'butter', daysLeft: 1 },
+        ],
+      });
+
+      expect(screen.getByText('Use soon: butter (tomorrow), egg (tomorrow)')).toBeInTheDocument();
+    });
+
+    it('shows a label only on the cards that use a soon item', () => {
+      renderResults({
+        data: [COMPLETE, PARTIAL, NO_PREP],
+        soonItems: [{ name: 'rice', daysLeft: 0 }],
+      });
+
+      const cards = screen.getAllByRole('listitem');
+      expect(within(cards[0]).queryByText(/^Use soon:/)).not.toBeInTheDocument();
+      expect(within(cards[1]).queryByText(/^Use soon:/)).not.toBeInTheDocument();
+      expect(within(cards[2]).getByText('Use soon: rice (today)')).toBeInTheDocument();
+    });
+
+    it('shows no label without the prop (the home page) or with no overlap', () => {
+      const { unmount } = renderResults({ data: [COMPLETE, PARTIAL] });
+      expect(screen.queryByText(/^Use soon:/)).not.toBeInTheDocument();
+      unmount();
+
+      renderResults({ data: [COMPLETE, PARTIAL], soonItems: [{ name: 'milk', daysLeft: 0 }] });
+      expect(screen.queryByText(/^Use soon:/)).not.toBeInTheDocument();
+    });
+
+    it('does not change the order of the cards', () => {
+      renderResults({
+        data: [PARTIAL, COMPLETE, NO_PREP],
+        soonItems: [{ name: 'rice', daysLeft: 0 }],
+      });
+
+      const titles = screen.getAllByRole('link').map((link) => link.textContent);
+      expect(titles).toEqual(['Cheese omelette', 'Scrambled eggs', 'Mystery bowl']);
+    });
   });
 
   it('counts only the matching recipes toward the scroll frame', async () => {

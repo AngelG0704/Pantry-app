@@ -22,6 +22,7 @@ const RESULT = {
   totalCount: 3,
   matchScore: 0.67,
   missingIngredients: ['salt'],
+  ingredients: ['bread', 'butter', 'salt'],
 };
 
 function apiError(message) {
